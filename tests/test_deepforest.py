@@ -11,7 +11,6 @@ import numpy as np
 from PIL import Image
 from matplotlib import pyplot as plt
 
-from deepforest import deepforest
 from deepforest import preprocess
 from deepforest import utilities
 from deepforest import tfrecords
