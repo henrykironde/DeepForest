@@ -15,6 +15,8 @@ from deepforest import preprocess
 from deepforest import utilities
 from deepforest import tfrecords
 from deepforest import get_data
+import deepforest
+from keras_retinanet import *
 
 #download latest release
 @pytest.fixture()
