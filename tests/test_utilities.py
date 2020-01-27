@@ -6,6 +6,7 @@ import os
 import pandas as pd
 import numpy as np
 from deepforest import deepforest
+from keras_retinanet import *
 
 @pytest.fixture()
 def annotations():

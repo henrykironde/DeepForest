@@ -7,6 +7,8 @@ __version__ = '0.2.8'
 
 import os
 
+from keras_retinanet import *
+
 _ROOT = os.path.abspath(os.path.dirname(__file__))
 def get_data(path):
     return os.path.join(_ROOT, 'data', path)

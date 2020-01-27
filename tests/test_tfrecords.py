@@ -13,6 +13,7 @@ import matplotlib.pyplot as plt
 
 from keras_retinanet.preprocessing import csv_generator
 from keras_retinanet import models
+from keras_retinanet.utils.compute_overlap import compute_overlap as compute_overlap
 
 @pytest.fixture()
 def config():

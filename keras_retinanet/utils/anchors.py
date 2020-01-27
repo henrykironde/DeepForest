@@ -17,7 +17,7 @@ limitations under the License.
 import numpy as np
 import keras
 
-from ..utils.compute_overlap import compute_overlap
+from keras_retinanet.utils.compute_overlap import compute_overlap
 
 
 class AnchorParameters:
