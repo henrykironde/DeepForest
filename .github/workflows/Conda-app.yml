@@ -15,7 +15,7 @@ jobs:
       matrix:
         python-version:
           # - 3.6
-          - 3.7
+          - 3.9
           # - 3.8
         os:
           - "ubuntu-latest"
@@ -52,6 +52,9 @@ jobs:
           channel-priority: flexible
           show-channel-urls: true
           use-only-tar-bz2: true
+
+      - name: "Package status"
+        run: "conda list"
 
       - name: "Run tests"
         run: "pytest -v"
