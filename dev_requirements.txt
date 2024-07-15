@@ -1,4 +1,6 @@
 albumentations>=1.0.0
+aiolimiter
+aiohttp
 bumpversion
 comet_ml
 docutils<0.18
@@ -15,6 +17,7 @@ opencv-python>=4.5.4
 pandas
 pillow>6.2.0
 pip
+pre-commit
 psutil
 pycocotools
 pytest
@@ -28,6 +31,7 @@ slidingwindow
 sphinx
 sphinx_markdown_tables
 sphinx_rtd_theme
+supervision
 tensorboard
 torch
 torchvision>=0.13
