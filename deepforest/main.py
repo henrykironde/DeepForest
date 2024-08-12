@@ -117,54 +117,40 @@ class deepforest(pl.LightningModule):
 
         self.save_hyperparameters()
 
-    def use_release(self, check_release=True):
-        """Use the latest DeepForest model release from github and load model.
-        Optionally download if release doesn't exist.
+    def use_model(self, check_release=True, model_name=None):
+        """Download model"""
+        if model_name == "deepforest-trees":
+            release_tag, self.release_state_dict = utilities.fetch_model(check_release=check_release)
+            if self.config["architecture"] != "retinanet":
+                warnings.warn(
+                    "The config file specifies architecture {}, "
+                    "but the release model is torchvision retinanet."
+                    "Reloading main.deepforest with a retinanet model"
+                    .format(self.config["architecture"]))
+                self.config["architecture"] = "retinanet"
+                self.create_model()
+            self.model.load_state_dict(torch.load(self.release_state_dict))
 
-        Args:
-            check_release (logical): whether to check github for a model recent release. In cases where you are hitting the github API rate limit, set to False and any local model will be downloaded. If no model has been downloaded an error will raise.
-        Returns:
-            model (object): A trained PyTorch model
-        """
-        # Download latest model from github release
-        release_tag, self.release_state_dict = utilities.use_release(
-            check_release=check_release)
-        if self.config["architecture"] != "retinanet":
-            warnings.warn(
-                "The config file specifies architecture {}, but the release model is torchvision retinanet. Reloading main.deepforest with a retinanet model"
-                .format(self.config["architecture"]))
-            self.config["architecture"] = "retinanet"
-            self.create_model()
-        self.model.load_state_dict(torch.load(self.release_state_dict))
+            # load saved model and tag release
+            self.__release_version__ = release_tag
+            print("Loading pre-built model: {}".format(release_tag))
 
-        # load saved model and tag release
-        self.__release_version__ = release_tag
-        print("Loading pre-built model: {}".format(release_tag))
+        if model_name == "bird":
+            # Download latest model from github release
+            release_tag, self.release_state_dict = utilities.fetch_model(check_release=check_release)
+            self.model.load_state_dict(torch.load(self.release_state_dict))
 
-    def use_bird_release(self, check_release=True):
-        """Use the latest DeepForest bird model release from github and load
-        model. Optionally download if release doesn't exist.
+            # load saved model and tag release
+            self.__release_version__ = release_tag
+            print("Loading pre-built model: {}".format(release_tag))
 
-        Args:
-            check_release (logical): whether to check github for a model recent release. In cases where you are hitting the github API rate limit, set to False and any local model will be downloaded. If no model has been downloaded an error will raise.
-        Returns:
-            model (object): A trained pytorch model
-        """
-        # Download latest model from github release
-        release_tag, self.release_state_dict = utilities.use_bird_release(
-            check_release=check_release)
-        self.model.load_state_dict(torch.load(self.release_state_dict))
+            print("Setting default score threshold to 0.3")
+            self.config["score_thresh"] = 0.3
 
-        # load saved model and tag release
-        self.__release_version__ = release_tag
-        print("Loading pre-built model: {}".format(release_tag))
+            # Set label dictionary to Bird
+            self.label_dict = {"Bird": 0}
+            self.numeric_to_label_dict = {v: k for k, v in self.label_dict.items()}
 
-        print("Setting default score threshold to 0.3")
-        self.config["score_thresh"] = 0.3
-
-        # Set label dictionary to Bird
-        self.label_dict = {"Bird": 0}
-        self.numeric_to_label_dict = {v: k for k, v in self.label_dict.items()}
 
     def create_model(self):
         """Define a deepforest architecture. This can be done in two ways.

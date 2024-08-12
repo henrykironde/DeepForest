@@ -33,11 +33,11 @@ def test_read_pascal_voc():
 
 def test_use_release(download_release):
     # Download latest model from github release
-    release_tag, state_dict = utilities.use_release(check_release=False)
+    release_tag, state_dict = utilities.fetch_model(check_release=False)
 
 def test_use_bird_release(download_release):
     # Download latest model from github release
-    release_tag, state_dict = utilities.use_bird_release()
+    release_tag, state_dict = utilities.fetch_model()
     assert os.path.exists(get_data("bird.pt"))    
     
 def test_float_warning(config):
