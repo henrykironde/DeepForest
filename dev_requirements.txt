@@ -5,7 +5,7 @@ bumpversion
 comet_ml
 docformatter
 docutils<0.18
-furo
+pydata-sphinx-theme
 geopandas
 huggingface_hub
 h5py
