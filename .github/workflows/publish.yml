@@ -12,9 +12,6 @@ jobs:
     strategy:
       matrix:
         index-url: ['https://test.pypi.org/legacy/', 'https://upload.pypi.org/legacy/']
-        token:
-          - ${{ secrets.TEST_PYPI_TOKEN }}
-          - ${{ secrets.PYPI_TOKEN }}
 
     steps:
       - name: Check out repository
@@ -36,8 +33,11 @@ jobs:
       - name: Publish to Test PyPI or PyPI
         env:
           TWINE_USERNAME: __token__
-          TWINE_PASSWORD: ${{ matrix.token }}
+          TWINE_PASSWORD: ${{ secrets.TEST_PYPI_TOKEN }}
         run: |
+          if [[ "${{ matrix.index-url }}" == "https://upload.pypi.org/legacy/" ]]; then
+            TWINE_PASSWORD=${{ secrets.PYPI_TOKEN }}
+          fi
           if [[ "${{ matrix.index-url }}" == "https://upload.pypi.org/legacy/" && "${GITHUB_REF_NAME}" == *-dev* ]]; then
             echo "Skipping publish to PyPI for dev version."
             exit 0
