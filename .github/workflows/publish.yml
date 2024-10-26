@@ -12,7 +12,9 @@ jobs:
     strategy:
       matrix:
         index-url: ['https://test.pypi.org/legacy/', 'https://upload.pypi.org/legacy/']
-        token: ['${{ secrets.TEST_PYPI_TOKEN }}', '${{ secrets.PYPI_TOKEN }}']
+        token:
+          - ${{ secrets.TEST_PYPI_TOKEN }}
+          - ${{ secrets.PYPI_TOKEN }}
 
     steps:
       - name: Check out repository
@@ -41,4 +43,3 @@ jobs:
             exit 0
           fi
           twine upload --repository-url ${{ matrix.index-url }} dist/*
-
