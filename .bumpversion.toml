@@ -38,4 +38,4 @@ commit_args = ""
 filename = "pyproject.toml"
 
 [[tool.bumpversion.files]]
-filename = "deepforest/_version.py"
+filename = "src/deepforest/_version.py"

@@ -73,6 +73,6 @@ dependencies = [
     "tqdm",
     "xmltodict",
 ]
-[tool.setuptools]
-packages = ["deepforest"]
-include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["src"]
