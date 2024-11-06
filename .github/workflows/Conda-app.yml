@@ -46,6 +46,9 @@ jobs:
           cache-environment: true
           cache-downloads: true
 
+      - name: Install package
+        run: pip install . -U
+
       - name: Run pytest
         run: pytest -v
 
