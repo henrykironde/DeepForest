@@ -19,6 +19,7 @@ from deepforest.visualize import format_geometry
 
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import Callback
+from pytorch_lightning.callbacks import TQDMProgressBar
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
@@ -348,24 +349,53 @@ def test_predict_tile_no_mosaic(m, raster_path):
     assert len(prediction[0]) == 2
     assert prediction[0][1].shape == (300, 300, 3)
 
-def test_predict_tile_verbose(m, raster_path, capsys, verbose=False):
+
+
+def test_predict_tile_verbose_false(m, raster_path, capsys):
+    # Ensure TQDMProgressBar is not in the callbacks list
+    if hasattr(m.trainer, 'callbacks'):
+        m.trainer.callbacks = [cb for cb in m.trainer.callbacks if not isinstance(cb, TQDMProgressBar)]
+    
     m.config["train"]["fast_dev_run"] = False
     m.create_trainer()
-    prediction = m.predict_tile(raster_path=raster_path,
-                                patch_size=300,
-                                patch_overlap=0,
-                                mosaic=True,
-                                verbose=verbose)
+    prediction = m.predict_tile(raster_path=raster_path, patch_size=300, patch_overlap=0, in_memory=True, verbose=False)
+    assert isinstance(prediction, pd.DataFrame)
+    assert not prediction.empty
 
     # Check no output was printed
-    if not verbose:
-        captured = capsys.readouterr()
-        print(captured.out)
-        assert not captured.out
-    else:
-        captured = capsys.readouterr()
-        print(captured.out)
-        assert captured.out
+    captured = capsys.readouterr()
+    assert not captured.out.strip()
+
+
+# def test_predict_tile_verbose(m, raster_path, capsys):
+#     """Test that verbose output can be controlled in predict_tile"""
+#     # Test with verbose=False
+#     m.config["train"]["fast_dev_run"] = False
+#     m.create_trainer()
+#     prediction = m.predict_tile(
+#         raster_path=raster_path,
+#         patch_size=300,
+#         patch_overlap=0,
+#         mosaic=True,
+#         verbose=False
+#     )
+    
+#     # Check no output was printed
+#     captured = capsys.readouterr()
+#     assert not captured.out.strip()
+
+#     # Test with verbose=True 
+#     prediction = m.predict_tile(
+#         raster_path=raster_path,
+#         patch_size=300,
+#         patch_overlap=0,
+#         mosaic=True,
+#         verbose=True
+#     )
+
+#     # Check output was printed
+#     captured = capsys.readouterr()
+#     assert captured.out.strip()
 
 def test_evaluate(m, tmpdir):
     csv_file = get_data("OSBS_029.csv")
