@@ -8,7 +8,7 @@ parse = """(?x)
     (?:
         -                             # dash separator for pre-release section
         (?P<pre_l>[a-zA-Z-]+)?       # pre-release label (optional)
-        (?P<pre_n>0|[1-9]\\d*)?      # pre-release version number (optional)
+        (?:(?P<pre_n>[0-9]+))?       # pre-release version number (optional)
     )?                               
 """
 
@@ -24,8 +24,10 @@ optional_value = ""
 serialize = [
     # Release version (when pre_l and pre_n are empty)
     "{major}.{minor}.{patch}",
-    # Pre-release version
-    "{major}.{minor}.{patch}-{pre_l}{pre_n}"
+    # Pre-release version with number
+    "{major}.{minor}.{patch}-{pre_l}{pre_n}",
+    # Pre-release version without number
+    "{major}.{minor}.{patch}-{pre_l}"
 ]
 
 [[tool.bumpversion.files]]
