@@ -30,6 +30,12 @@ serialize = [
     "{major}.{minor}.{patch}-{pre_l}"
 ]
 
+search = "{current_version}"
+replace = "{new_version}"
+tag = true
+commit = true
+message = "Bump version: {current_version} → {new_version}"
+
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
 
