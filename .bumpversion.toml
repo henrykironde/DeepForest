@@ -8,33 +8,31 @@ parse = """(?x)
     (?:
         -                             # dash separator for pre-release section
         (?P<pre_l>[a-zA-Z-]+)?       # pre-release label (optional)
-        (?:(?P<pre_n>[0-9]+))?       # pre-release version number (optional)
+        (?P<pre_n>[0-9]+)?           # pre-release version number (optional)
     )?                               
 """
+
+[tool.bumpversion.parts.major]
+independent = true
+
+[tool.bumpversion.parts.minor]
+independent = true
+
+[tool.bumpversion.parts.patch]
+independent = true
 
 [tool.bumpversion.parts.pre_l]
 values = ["dev", "rc", ""]
 optional_value = ""
 
 [tool.bumpversion.parts.pre_n]
+independent = true
 first_value = "0"
-optional_value = ""
 
-# Define different serialization formats
 serialize = [
-    # Release version (when pre_l and pre_n are empty)
     "{major}.{minor}.{patch}",
-    # Pre-release version with number
-    "{major}.{minor}.{patch}-{pre_l}{pre_n}",
-    # Pre-release version without number
-    "{major}.{minor}.{patch}-{pre_l}"
+    "{major}.{minor}.{patch}-{pre_l}{pre_n}"
 ]
-
-search = "{current_version}"
-replace = "{new_version}"
-tag = true
-commit = true
-message = "Bump version: {current_version} → {new_version}"
 
 [[tool.bumpversion.files]]
 filename = "pyproject.toml"
