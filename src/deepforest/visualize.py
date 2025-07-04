@@ -447,7 +447,7 @@ def plot_annotations(
     image = _load_image(image, annotations, root_dir)
 
     # Plot the results following https://supervision.roboflow.com/annotators/
-    plt.subplots()
+    fig, ax = plt.subplots()
     annotated_scene = _plot_image_with_geometry(df=annotations,
                                                 image=image,
                                                 sv_color=annotation_color,
@@ -463,11 +463,13 @@ def plot_annotations(
         image_name = "{}.png".format(basename)
         image_path = os.path.join(savedir, image_name)
         cv2.imwrite(image_path, annotated_scene)
+        plt.close(fig)  # Close the figure to free memory
     else:
         # Display the image using Matplotlib
-        plt.imshow(annotated_scene)
-        plt.axis('off')  # Hide axes for a cleaner look
+        ax.imshow(annotated_scene)
+        ax.axis('off')  # Hide axes for a cleaner look
         plt.show()
+        plt.close(fig)  # Close the figure after showing
 
 
 def plot_results(results: pd.DataFrame,
@@ -511,7 +513,7 @@ def plot_results(results: pd.DataFrame,
     image = _load_image(image, results)
 
     # Plot the results following https://supervision.roboflow.com/annotators/
-    _, ax = plt.subplots()
+    fig, ax = plt.subplots()
     annotated_scene = _plot_image_with_geometry(df=results,
                                                 image=image,
                                                 sv_color=results_color_sv,
@@ -537,13 +539,16 @@ def plot_results(results: pd.DataFrame,
         image_name = "{}.png".format(basename)
         image_path = os.path.join(savedir, image_name)
         cv2.imwrite(image_path, annotated_scene)
+        if not axes:
+            plt.close(fig)  # Close the figure to free memory
     else:
         # Display the image using Matplotlib
-        plt.imshow(annotated_scene)
+        ax.imshow(annotated_scene)
         if axes:
             return ax
-        plt.axis('off')  # Hide axes for a cleaner look
+        ax.axis('off')  # Hide axes for a cleaner look
         plt.show()
+        plt.close(fig)  # Close the figure after showing
 
 
 def _plot_image_with_geometry(df,

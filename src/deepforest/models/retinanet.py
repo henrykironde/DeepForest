@@ -33,7 +33,12 @@ class RetinaNetHub(RetinaNet, PyTorchModelHubMixin):
                          **kwargs)
 
         #See docs.pytorch.org/docs/stable/generated/torch.nn.Module.html#torch.nn.Module.register_load_state_dict_pre_hook
-        self.register_load_state_dict_pre_hook(RetinaNetHub._strip_legacy_prefix)
+        # Use post_hook for PyTorch < 2.3.0 compatibility
+        if hasattr(self, 'register_load_state_dict_pre_hook'):
+            self.register_load_state_dict_pre_hook(RetinaNetHub._strip_legacy_prefix)
+        else:
+            # For older PyTorch versions, we'll handle this in the from_pretrained method
+            self._legacy_prefix_strip = True
 
         self.label_dict = label_dict
 
@@ -45,6 +50,45 @@ class RetinaNetHub(RetinaNet, PyTorchModelHubMixin):
             "label_dict": label_dict,
             **kwargs
         }
+
+    @classmethod
+    def from_pretrained(cls, pretrained_model_name_or_path, *args, **kwargs):
+        """Override from_pretrained to handle legacy prefix stripping for older
+        PyTorch versions."""
+        # First, create the model instance
+        model = cls(num_classes=1)  # Create with default values
+
+        # Load the state dict manually to handle prefix stripping
+        from huggingface_hub import hf_hub_download
+        import safetensors.torch
+
+        # Download the model file
+        model_file = hf_hub_download(
+            repo_id=pretrained_model_name_or_path,
+            filename="model.safetensors",
+            **{
+                k: v for k, v in kwargs.items() if k in [
+                    'revision', 'cache_dir', 'force_download', 'proxies',
+                    'resume_download', 'local_files_only', 'token'
+                ]
+            })
+
+        # Load the state dict
+        state_dict = safetensors.torch.load_file(model_file)
+
+        # Strip the "model." prefix if present
+        modified_state_dict = {}
+        for k, v in state_dict.items():
+            if k.startswith("model."):
+                new_k = k.replace("model.", "", 1)
+                modified_state_dict[new_k] = v
+            else:
+                modified_state_dict[k] = v
+
+        # Load the modified state dict
+        model.load_state_dict(modified_state_dict, strict=False)
+
+        return model
 
     @staticmethod
     def _strip_legacy_prefix(module, state_dict, prefix, local_metadata, strict,

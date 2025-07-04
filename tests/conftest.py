@@ -8,6 +8,11 @@ from deepforest import _ROOT
 import os
 import urllib
 
+# Configure matplotlib to use non-interactive backend for testing
+import matplotlib
+matplotlib.use('Agg')  # Use non-interactive backend
+import matplotlib.pyplot as plt
+
 collect_ignore = ['setup.py']
 
 
@@ -67,3 +72,10 @@ def m(download_release):
     m.load_model("weecology/deepforest-tree")
 
     return m
+
+
+@pytest.fixture(autouse=True)
+def cleanup_matplotlib():
+    """Clean up matplotlib figures after each test to prevent memory leaks."""
+    yield
+    plt.close('all')  # Close all figures
