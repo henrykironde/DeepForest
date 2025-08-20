@@ -865,3 +865,150 @@ def project_boxes(df, root_dir, transform=True):
         "This function is deprecated. Please use image_to_geo_coordinates instead.")
 
     return df
+
+
+def load_torch_model(file_path, map_location=None, safe=True):
+    """Load a PyTorch model from file with backward compatibility support.
+
+    This function handles both .safetensors and .bin (pickle) formats,
+    providing a unified interface for model loading.
+
+    Args:
+        file_path (str): Path to the model file
+        map_location (str, optional): Device to load the model onto
+        safe (bool): If True, prefer safetensors format; if False, prefer pickle format
+
+    Returns:
+        dict: The loaded state dict
+
+    Raises:
+        FileNotFoundError: If the model file doesn't exist
+        RuntimeError: If the model file cannot be loaded
+    """
+    import os
+    from pathlib import Path
+
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        raise FileNotFoundError(f"Model file not found: {file_path}")
+
+    # Try to load as safetensors first if safe=True
+    if safe:
+        try:
+            # Use the actual safetensors library
+            import safetensors.torch as safetensors_torch
+            return safetensors_torch.load_file(str(file_path), device=map_location)
+        except (ImportError, Exception) as e:
+            # Fall back to pickle format
+            pass
+
+    # Try to load as pickle format
+    try:
+        import torch
+        return torch.load(str(file_path), map_location=map_location, weights_only=True)
+    except Exception as e:
+        raise RuntimeError(f"Failed to load model from {file_path}: {e}")
+
+
+def save_torch_model(state_dict, file_path, safe_serialization=True, **kwargs):
+    """Save a PyTorch model to file with format selection.
+
+    This function provides a unified interface for saving models in either
+    safetensors or pickle format, with proper error handling.
+
+    Args:
+        state_dict (dict): The model state dict to save
+        file_path (str): Path where to save the model
+        safe_serialization (bool): If True, save as safetensors; if False, save as pickle
+        **kwargs: Additional arguments passed to the save function
+    """
+    from pathlib import Path
+    import os
+
+    file_path = Path(file_path)
+
+    # Ensure directory exists
+    file_path.parent.mkdir(parents=True, exist_ok=True)
+
+    if safe_serialization:
+        try:
+            # Use the actual safetensors library
+            import safetensors.torch as safetensors_torch
+            safetensors_torch.save_file(state_dict, str(file_path), **kwargs)
+        except ImportError:
+            # Fall back to pickle if safetensors is not available
+            import torch
+            torch.save(state_dict, str(file_path), **kwargs)
+            import warnings
+            warnings.warn("safetensors not available, falling back to pickle format. "
+                          "Install safetensors for better security and performance.")
+    else:
+        # Use pickle format
+        import torch
+        torch.save(state_dict, str(file_path), **kwargs)
+
+
+def get_model_format_info(file_path):
+    """Get information about the format of a model file.
+
+    Args:
+        file_path (str): Path to the model file
+
+    Returns:
+        dict: Information about the model format
+    """
+    from pathlib import Path
+    import os
+
+    file_path = Path(file_path)
+
+    if not file_path.exists():
+        return {"exists": False, "format": None, "size": None}
+
+    size = file_path.stat().st_size
+
+    # Check file extension and content
+    if file_path.suffix == '.safetensors':
+        return {"exists": True, "format": "safetensors", "size": size}
+    elif file_path.suffix in ['.bin', '.pt', '.pth']:
+        return {"exists": True, "format": "pickle", "size": size}
+    else:
+        # Try to determine format by content
+        try:
+            with open(file_path, 'rb') as f:
+                header = f.read(8)
+                if header.startswith(b'PK'):
+                    return {"exists": True, "format": "pickle", "size": size}
+                else:
+                    return {"exists": True, "format": "unknown", "size": size}
+        except Exception:
+            return {"exists": True, "format": "unknown", "size": size}
+
+
+def convert_model_format(input_path, output_path, target_format='safetensors'):
+    """Convert a model between different formats.
+
+    Args:
+        input_path (str): Path to the input model file
+        output_path (str): Path where to save the converted model
+        target_format (str): Target format ('safetensors' or 'pickle')
+
+    Returns:
+        bool: True if conversion was successful
+    """
+    try:
+        # Load the model
+        state_dict = load_torch_model(input_path, safe=True)
+
+        # Save in target format
+        if target_format == 'safetensors':
+            save_torch_model(state_dict, output_path, safe_serialization=True)
+        else:
+            save_torch_model(state_dict, output_path, safe_serialization=False)
+
+        return True
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Failed to convert model format: {e}")
+        return False

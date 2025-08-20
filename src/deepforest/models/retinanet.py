@@ -47,13 +47,32 @@ class RetinaNetHub(RetinaNet, PyTorchModelHubMixin):
                         *,
                         num_classes=None,
                         label_dict=None,
+                        safe_serialization=None,
                         **kwargs):
         """This function overrides the default from_pretrained method to better
         support overriding the number of classes in a pretrained model.
 
         If the target num_classes differs from the model's num_classes,
         then the model heads are reinitialized to compensate.
+
+        Args:
+            pretrained_model_name_or_path: Path or name of the pretrained model
+            num_classes: Number of classes for the model
+            label_dict: Label dictionary mapping
+            safe_serialization: If False, forces pickle format for backward compatibility
+            **kwargs: Additional arguments passed to the parent method
         """
+        # Handle backward compatibility for safetensors
+        if safe_serialization is False:
+            # Force pickle format for backward compatibility
+            kwargs['safe_serialization'] = False
+        elif safe_serialization is None:
+            # Use default behavior (safetensors for transformers >=4.35.0)
+            pass
+        else:
+            # User explicitly requested safetensors
+            kwargs['safe_serialization'] = True
+
         model = super().from_pretrained(pretrained_model_name_or_path, **kwargs)
 
         # Override class info if specified
