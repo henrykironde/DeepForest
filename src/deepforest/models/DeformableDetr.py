@@ -32,14 +32,18 @@ class DeformableDetrWrapper(nn.Module):
             # If the user passed in a different number of classes to the model,
             # then the model will be modified on load. So we ignore
             # mismatched sizes here.
+
+            # Filter out safe_serialization from kwargs as it's not a valid parameter for the model
+            model_kwargs = {k: v for k, v in hf_args.items() if k != 'safe_serialization'}
+
             self.net = DeformableDetrForObjectDetection.from_pretrained(
                 name,
                 revision=revision,
                 num_labels=self.config.num_classes,
                 ignore_mismatched_sizes=True,
-                **hf_args)
+                **model_kwargs)
             self.processor = DeformableDetrImageProcessor.from_pretrained(
-                name, revision=revision, **hf_args)
+                name, revision=revision, **model_kwargs)
 
             # If user-provided label_dict doesn't match the model's id2label:
             if self.net.config.label2id != self.config.label_dict:

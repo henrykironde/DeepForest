@@ -93,3 +93,9 @@ validation:
 
 predict:
     pin_memory: False
+
+# Model serialization settings
+# Set to false for backward compatibility with older tools that expect .bin files
+# Set to true to explicitly use safetensors format
+# Leave as null to use default behavior (safetensors for transformers >=4.35.0)
+safe_serialization: null
