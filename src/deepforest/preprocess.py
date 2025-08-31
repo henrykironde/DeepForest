@@ -272,6 +272,8 @@ def load_annotations(annotations_file, root_dir):
     """
     if isinstance(annotations_file, str):
         return read_file(annotations_file, root_dir=root_dir)
+    elif isinstance(annotations_file, gpd.GeoDataFrame):
+        return annotations_file
     elif isinstance(annotations_file, pd.DataFrame):
         if root_dir is None:
             raise ValueError(
@@ -279,12 +281,9 @@ def load_annotations(annotations_file, root_dir):
                 "image_path, please also specify a root_dir"
             )
         return read_file(annotations_file, root_dir=root_dir)
-    elif isinstance(annotations_file, gpd.GeoDataFrame):
-        return annotations_file
     else:
         raise TypeError(
-            "Annotations file must either be a path, Pandas Dataframe, or "
-            f"Geopandas GeoDataFrame, found {type(annotations_file)}"
+            f"Annotations file must either be a path, Pandas Dataframe, or Geopandas GeoDataFrame, found {type(annotations_file)}"
         )
 
 

@@ -466,10 +466,19 @@ def __check_color__(
         else:
             return color
     elif isinstance(color, list):
-        raise ValueError(
-            "results_color must be either a 3 item list containing RGB values "
-            "or an sv.ColorPalette instance"
-        )
+        if len(color) == 3:
+            if num_labels > 1:
+                warnings.warn(
+                    "Multiple labels detected, but results_color provides a single color. "
+                    "Using a built-in color ramp. To customize, pass a ColorPalette with the "
+                    "same number of labels.",
+                    stacklevel=2,
+                )
+                return sv.ColorPalette.from_matplotlib("viridis", num_labels)
+            else:
+                return sv.Color(color[0], color[1], color[2])
+        else:
+            raise ValueError("results_color list must contain exactly 3 RGB values")
     else:
         raise TypeError(
             "results_color must be either a list of RGB values "

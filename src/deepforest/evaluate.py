@@ -109,7 +109,29 @@ def __evaluate_wrapper__(predictions, ground_df, iou_threshold, numeric_to_label
         warnings.warn(
             "Converting predictions to GeoDataFrame using geometry column", stacklevel=2
         )
+        # Check if we have bounding box columns and need to create geometry
+        if "geometry" not in predictions.columns and all(
+            col in predictions.columns for col in ["xmin", "ymin", "xmax", "ymax"]
+        ):
+            # Create geometry from bounding box columns
+            predictions = predictions.copy()
+            predictions["geometry"] = predictions.apply(
+                lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+            )
         predictions = gpd.GeoDataFrame(predictions, geometry="geometry")
+
+    # Also ensure ground_df is a GeoDataFrame
+    if not isinstance(ground_df, gpd.GeoDataFrame):
+        # Check if we have bounding box columns and need to create geometry
+        if "geometry" not in ground_df.columns and all(
+            col in ground_df.columns for col in ["xmin", "ymin", "xmax", "ymax"]
+        ):
+            # Create geometry from bounding box columns
+            ground_df = ground_df.copy()
+            ground_df["geometry"] = ground_df.apply(
+                lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+            )
+        ground_df = gpd.GeoDataFrame(ground_df, geometry="geometry")
 
     prediction_geometry = determine_geometry_type(predictions)
     if prediction_geometry == "point":
@@ -163,6 +185,31 @@ def evaluate_boxes(predictions, ground_df, iou_threshold=0.4):
             "predictions": predictions,
             "ground_df": ground_df,
         }
+
+    # Convert pandas to geopandas if needed
+    if not isinstance(predictions, gpd.GeoDataFrame):
+        # Check if we have bounding box columns and need to create geometry
+        if "geometry" not in predictions.columns and all(
+            col in predictions.columns for col in ["xmin", "ymin", "xmax", "ymax"]
+        ):
+            # Create geometry from bounding box columns
+            predictions = predictions.copy()
+            predictions["geometry"] = predictions.apply(
+                lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+            )
+        predictions = gpd.GeoDataFrame(predictions, geometry="geometry")
+
+    if not isinstance(ground_df, gpd.GeoDataFrame):
+        # Check if we have bounding box columns and need to create geometry
+        if "geometry" not in ground_df.columns and all(
+            col in ground_df.columns for col in ["xmin", "ymin", "xmax", "ymax"]
+        ):
+            # Create geometry from bounding box columns
+            ground_df = ground_df.copy()
+            ground_df["geometry"] = ground_df.apply(
+                lambda x: shapely.geometry.box(x.xmin, x.ymin, x.xmax, x.ymax), axis=1
+            )
+        ground_df = gpd.GeoDataFrame(ground_df, geometry="geometry")
 
     # Run evaluation on all plots
     results = []
