@@ -1,12 +1,15 @@
 # Fixtures model to only download model once
 # download latest release
-import pytest
-from deepforest import main
-from deepforest import utilities
-from deepforest import get_data
-from deepforest import _ROOT
 import os
 import urllib
+
+import pytest
+
+from deepforest import _ROOT
+from deepforest import get_data
+from deepforest import main
+from deepforest import utilities
+
 
 collect_ignore = ['setup.py']
 

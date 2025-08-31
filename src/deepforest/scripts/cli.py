@@ -1,41 +1,41 @@
 import argparse
 import os
-from typing import Optional
 
-from hydra import compose, initialize_config_dir, initialize
+from hydra import compose, initialize, initialize_config_dir
 from omegaconf import DictConfig, OmegaConf
 
+from deepforest.conf.schema import Config as StructuredConfig
 from deepforest.main import deepforest
 from deepforest.visualize import plot_results
-from deepforest.conf.schema import Config as StructuredConfig
 
 
 def train(config: DictConfig) -> None:
+    """Train DeepForest model."""
     m = deepforest(config=config)
     m.trainer.fit(m)
 
 
-def predict(config: DictConfig,
-            input_path: str,
-            output_path: Optional[str] = None,
-            plot: Optional[bool] = False) -> None:
-    """Run prediction for the given image, optionally saving the results to the
-    provided path and optionally visualizing the results.
+def predict(
+    config: DictConfig,
+    input_path: str,
+    output_path: str | None = None,
+    plot: bool | None = False,
+) -> None:
+    """Run prediction on input image.
 
     Args:
-        config (DictConfig): Hydra configuration.
-        input_path (str): Path to the input image.
-        output_path (Optional[str]): Path to save the prediction results.
-        plot (Optional[bool]): Whether to plot the results.
-
-    Returns:
-        None
+        config: DeepForest configuration
+        input_path: Path to input image
+        output_path: Path to save results
+        plot: Whether to plot results
     """
     m = deepforest(config=config)
-    res = m.predict_tile(path=input_path,
-                         patch_size=config.patch_size,
-                         patch_overlap=config.patch_overlap,
-                         iou_threshold=config.nms_thresh)
+    res = m.predict_tile(
+        path=input_path,
+        patch_size=config.patch_size,
+        patch_overlap=config.patch_overlap,
+        iou_threshold=config.nms_thresh,
+    )
 
     if output_path is not None:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -46,23 +46,22 @@ def predict(config: DictConfig,
 
 
 def main():
-    parser = argparse.ArgumentParser(description='DeepForest CLI')
+    """DeepForest command-line interface."""
+    parser = argparse.ArgumentParser(description="DeepForest CLI")
     subparsers = parser.add_subparsers(dest="command")
 
     # Train subcommand
     _ = subparsers.add_parser(
         "train",
         help="Train a model",
-        epilog=
-        'Any remaining arguments <key>=<value> will be passed to Hydra to override the current config.'
+        epilog="Hydra parses extra key:value arguments and uses them to override the current configuration",
     )
 
     # Predict subcommand
     predict_parser = subparsers.add_parser(
         "predict",
         help="Run prediction on input",
-        epilog=
-        'Any remaining arguments <key>=<value> will be passed to Hydra to override the current config.'
+        epilog="Hydra parses extra key:value arguments and uses them to override the current configuration",
     )
     predict_parser.add_argument("input", help="Path to input raster")
     predict_parser.add_argument("-o", "--output", help="Path to prediction results")
@@ -73,9 +72,9 @@ def main():
 
     # Config options for Hydra
     parser.add_argument("--config-dir", help="Show available config overrides and exit")
-    parser.add_argument("--config-name",
-                        help="Show available config overrides and exit",
-                        default="config")
+    parser.add_argument(
+        "--config-name", help="Show available config overrides and exit", default="config"
+    )
 
     args, overrides = parser.parse_known_args()
 

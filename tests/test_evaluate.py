@@ -1,15 +1,16 @@
 # Test evaluate
 # Test IoU
-from .conftest import download_release
-from deepforest.utilities import read_file
-from deepforest import evaluate
-from deepforest import main
-from deepforest import get_data
 import os
-import pytest
-import pandas as pd
-import numpy as np
+
 import geopandas as gpd
+import numpy as np
+import pandas as pd
+import pytest
+
+from deepforest import evaluate
+from deepforest import get_data
+from deepforest import main
+from deepforest.utilities import read_file
 
 
 def test_evaluate_image(m):
