@@ -55,3 +55,4 @@ dependencies:
     - omegaconf
     - transformers
     - timm
+    - hydra
