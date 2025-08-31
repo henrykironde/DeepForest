@@ -54,3 +54,4 @@ dependencies:
     - myst-parser
     - omegaconf
     - transformers
+    - timm
