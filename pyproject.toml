@@ -80,6 +80,7 @@ dependencies = [
     "sphinx-markdown-tables",
     "sphinx_rtd_theme",
     "supervision",
+    "transformers",
     "tensorboard",
     "torch",
     "torchvision",

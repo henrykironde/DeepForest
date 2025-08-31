@@ -41,6 +41,7 @@ supervision
 tensorboard
 torch
 torchvision>=0.13
+transformers
 tqdm
 twine
 xmltodict

@@ -53,3 +53,4 @@ dependencies:
     - safetensors<0.6.0
     - myst-parser
     - omegaconf
+    - transformers
