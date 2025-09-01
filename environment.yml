@@ -52,3 +52,7 @@ dependencies:
     - opencv-python-headless
     - safetensors<0.6.0
     - myst-parser
+    - omegaconf
+    - transformers
+    - timm
+    - hydra

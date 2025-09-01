@@ -1,34 +1,31 @@
 # test main
-import os
-import glob
-import pytest
-import pandas as pd
-import numpy as np
-import cv2
-import shutil
-import torch
-import tempfile
 import copy
 import importlib.util
+import os
+import shutil
+import tempfile
+from unittest.mock import Mock
 
-from deepforest import main, get_data, model
-from deepforest.utilities import read_file, format_geometry
-from deepforest.datasets import prediction
-from deepforest.visualize import plot_results
-
+import cv2
+import geopandas as gpd
+import numpy as np
+import pandas as pd
+import pytest
+import shapely
+import torch
+from PIL import Image
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.loggers import TensorBoardLogger
 from torch.utils.data import DataLoader
 
-import geopandas as gpd
-from PIL import Image
-import shapely
-
+from deepforest import main, get_data, model
+from deepforest.datasets import prediction
+from deepforest.utilities import read_file, format_geometry
+from deepforest.visualize import plot_results
 # Import release model from global script to avoid thrasing github during testing.
 # Just download once.
 from .conftest import download_release
-from unittest.mock import Mock
 
 ALL_ARCHITECTURES = ["retinanet", "DeformableDetr"]
 
@@ -71,6 +68,7 @@ def m(download_release):
     m.load_model("weecology/deepforest-tree")
 
     return m
+
 
 # A random-initialized model
 @pytest.fixture()
@@ -116,6 +114,7 @@ def big_file():
 
     return "{}/annotations.csv".format(tmpdir)
 
+
 def state_dicts_equal(model_a, model_b):
     state_dict_a = model_a.state_dict()
     state_dict_b = model_b.state_dict()
@@ -134,6 +133,7 @@ def state_dicts_equal(model_a, model_b):
 def test_m_has_tree_model_loaded(m):
     boxes = m.predict_image(path=get_data("OSBS_029.tif"))
     assert not boxes.empty
+
 
 def test_tensorboard_logger(m, tmpdir):
     # Check if TensorBoard is installed
@@ -164,6 +164,7 @@ def test_use_bird_release(m):
     boxes = m.predict_image(path=imgpath)
     assert not boxes.empty
 
+
 def test_load_model(m):
     imgpath = get_data("OSBS_029.png")
     m.load_model('ethanwhite/df-test')
@@ -185,6 +186,7 @@ def test_train_empty_train_csv(m, tmpdir):
     m.config.batch_size = 2
     m.create_trainer(fast_dev_run=True)
     m.trainer.fit(m)
+
 
 def test_train_with_empty_validation_csv(m, tmpdir):
     empty_csv = pd.DataFrame({
@@ -211,6 +213,7 @@ def test_validation_step(m):
     val_loss = m.validation_step(batch, 0)
     assert val_loss != 0
 
+
 def test_validation_step_empty(m_without_release):
     """If the model returns an empty prediction, the metrics should not fail"""
     m = m_without_release
@@ -223,6 +226,7 @@ def test_validation_step_empty(m_without_release):
     m.predictions = []
     val_predictions = m.validation_step(batch, 0)
     assert m.iou_metric.compute()["iou"] == 0
+
 
 def test_validate(m):
     m.trainer = None
@@ -294,9 +298,11 @@ def test_train_geometry_column(m, tmpdir):
     m.create_trainer(fast_dev_run=True)
     m.trainer.fit(m)
 
+
 def test_train_multi(two_class_m):
     two_class_m.create_trainer(fast_dev_run=True)
     two_class_m.trainer.fit(two_class_m)
+
 
 def test_model_multi_from_single():
     # Check we can go from a single-class model to multi
@@ -317,6 +323,7 @@ def test_model_multi_from_single():
     # Check our label dict was not overriden
     assert m.label_dict == labels
 
+
 def test_model_single_from_multi():
     # Check we can go from a multi-class model to a single-class.
     labels = {
@@ -333,6 +340,7 @@ def test_model_single_from_multi():
 
     # Check label dict is as expected
     assert m.label_dict == labels
+
 
 @pytest.mark.parametrize("architecture", ALL_ARCHITECTURES)
 def test_empty_model_labels_single(architecture):
@@ -352,6 +360,7 @@ def test_empty_model_labels_single(architecture):
     # Check label dict is as expected
     assert m.label_dict == labels
 
+
 @pytest.mark.parametrize("architecture", ALL_ARCHITECTURES)
 def test_empty_model_labels_multi(architecture):
     # Verify that we can set up a multi-class model from scratch with custom labels
@@ -370,6 +379,7 @@ def test_empty_model_labels_multi(architecture):
 
     # Check label dict is as expected
     assert m.label_dict == labels
+
 
 def test_train_no_validation(m):
     m.config.train.fast_dev_run = False
@@ -413,6 +423,7 @@ def test_predict_image_fromarray(m):
     assert set(prediction.columns) == {"xmin", "ymin", "xmax", "ymax", "label", "score", "geometry"}
     assert not hasattr(prediction, 'root_dir')
 
+
 def test_predict_big_file(m, big_file):
     m.config.train.fast_dev_run = False
     m.create_trainer()
@@ -422,12 +433,14 @@ def test_predict_big_file(m, big_file):
         'label', 'score', 'image_path', 'geometry', "xmin", "ymin", "xmax", "ymax"
     }
 
+
 def test_predict_small_file(m):
     csv_file = get_data("OSBS_029.csv")
     df = m.predict_file(csv_file, root_dir=os.path.dirname(csv_file))
     assert set(df.columns) == {
         'label', 'score', 'image_path', 'geometry', "xmin", "ymin", "xmax", "ymax"
     }
+
 
 @pytest.mark.parametrize("batch_size", [1, 2])
 def test_predict_dataloader(m, batch_size, path):
@@ -438,10 +451,12 @@ def test_predict_dataloader(m, batch_size, path):
     batch = next(iter(dl))
     assert batch.shape[0] == batch_size
 
+
 def test_predict_tile_empty(m_without_release, path):
     m = m_without_release
     predictions = m.predict_tile(path=path, patch_size=300, patch_overlap=0)
     assert predictions is None
+
 
 @pytest.mark.parametrize("dataloader_strategy", ["single", "window", "batch"])
 def test_predict_tile(m, path, dataloader_strategy):
@@ -497,6 +512,7 @@ def test_predict_tile_serial_single(m):
     plot_results(prediction_1)
     plot_results(prediction_2)
 
+
 # test equivalence for within and out of memory dataset strategies
 def test_predict_tile_equivalence(m):
     path = get_data("test_tiled.tif")
@@ -506,6 +522,7 @@ def test_predict_tile_equivalence(m):
     # Assert same number of predictions
     assert len(in_memory_prediction) == len(not_in_memory_prediction)
 
+
 def test_predict_tile_from_array(m, path):
     image = np.array(Image.open(path))
     m.config.train.fast_dev_run = False
@@ -513,6 +530,7 @@ def test_predict_tile_from_array(m, path):
     prediction = m.predict_tile(image=image, patch_size=300)
 
     assert not prediction.empty
+
 
 def test_evaluate(m, tmpdir):
     csv_file = get_data("OSBS_029.csv")
@@ -574,6 +592,7 @@ def test_checkpoint_label_dict(m, tmpdir):
     assert after.label_dict == {"Object": 0}
     assert after.numeric_to_label_dict == {0: "Object"}
 
+
 def test_save_and_reload_checkpoint(m, tmpdir):
     img_path = get_data(path="2019_YELL_2_528000_4978000_image_crop2.png")
     m.config.train.fast_dev_run = True
@@ -615,6 +634,7 @@ def test_save_and_reload_weights(m, tmpdir):
     assert not pred_after_reload.empty
     pd.testing.assert_frame_equal(pred_after_train, pred_after_reload)
 
+
 def test_reload_multi_class(two_class_m, tmpdir):
     two_class_m.config.train.fast_dev_run = True
     two_class_m.create_trainer()
@@ -631,6 +651,7 @@ def test_reload_multi_class(two_class_m, tmpdir):
     after = old_model.trainer.validate(old_model)
 
     assert after[0]["val_classification"] == before[0]["val_classification"]
+
 
 def test_over_score_thresh(m):
     """A user might want to change the config after model training and update the score thresh"""
@@ -848,6 +869,7 @@ def test_predict_tile_with_crop_model_empty(m_without_release):
     # Assert the result
     assert result is None or result.empty
 
+
 def test_predict_tile_with_multiple_crop_models(m, config):
     path = get_data("SOAP_061.png")
     patch_size = 400
@@ -898,6 +920,7 @@ def test_predict_tile_with_multiple_crop_models_empty(m_without_release):
 
     assert result is None or result.empty  # Ensure empty result is handled properly
 
+
 def test_batch_prediction(m, path):
     # Prepare input data
     ds = prediction.SingleImage(path=path, patch_overlap=0.1, patch_size=300)
@@ -916,6 +939,7 @@ def test_batch_prediction(m, path):
         assert "label" in image_pred.columns
         assert "score" in image_pred.columns
         assert "geometry" in image_pred.columns
+
 
 def test_batch_inference_consistency(m, path):
     ds = prediction.SingleImage(path=path, patch_overlap=0.1, patch_size=300)
@@ -978,6 +1002,7 @@ def test_epoch_evaluation_end(m, tmpdir):
 
     assert results["box_precision"] == 1.0
     assert results["box_recall"] == 1.0
+
 
 def test_epoch_evaluation_end_empty(m):
     """If the model returns an empty prediction, the metrics should not fail"""
