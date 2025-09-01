@@ -53,7 +53,7 @@ dependencies = [
     "nbmake",
     "nbqa",
     "nbsphinx",
-    "numpy",
+    "numpy<2.0",
     "numpydoc",
     "opencv-python-headless>=4.5.4",
     "omegaconf",
@@ -66,7 +66,7 @@ dependencies = [
     "Pygments",
     "pytest",
     "pytest-profiling",
-    "pytorch-lightning>1.5.8",
+    "pytorch-lightning>=2.0.0,<3.0.0",
     "pyyaml>=5.1.0",
     "rasterio",
     "recommonmark",
@@ -83,12 +83,12 @@ dependencies = [
     "timm",
     "transformers",
     "tensorboard",
-    "torch",
-    "torchvision",
+    "torch>=2.0.0,<2.1.0",
+    "torchvision>=0.15.0,<0.16.0",
     "tqdm",
     "twine",
     "xmltodict",
-    "hydra",
+    "hydra-core",
 ]
 
 [project.optional-dependencies]
