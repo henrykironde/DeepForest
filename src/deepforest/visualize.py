@@ -1,6 +1,7 @@
 # Visualize module for plotting and handling predictions
 import os
 import random
+import sys
 import warnings
 
 import cv2
@@ -13,6 +14,24 @@ from matplotlib import pyplot as plt
 from PIL import Image
 
 from deepforest.utilities import determine_geometry_type
+
+
+def _is_testing_environment():
+    """Check if we're running in a testing environment."""
+    return (
+        "pytest" in sys.modules
+        or "PYTEST_CURRENT_TEST" in os.environ
+        or "MPLBACKEND" in os.environ
+    )
+
+
+def _safe_show_plot():
+    """Safely show plot, avoiding interactive display during testing."""
+    if not _is_testing_environment():
+        plt.show()
+    else:
+        # In testing, just close the figure to free memory
+        plt.close()
 
 
 def _load_image(
@@ -545,7 +564,7 @@ def plot_annotations(
         # Display the image using Matplotlib
         plt.imshow(annotated_scene)
         plt.axis("off")  # Hide axes for a cleaner look
-        plt.show()
+        _safe_show_plot()
 
 
 def plot_results(
@@ -633,7 +652,7 @@ def plot_results(
         if axes:
             return ax
         plt.axis("off")  # Hide axes for a cleaner look
-        plt.show()
+        _safe_show_plot()
 
 
 def _plot_image_with_geometry(

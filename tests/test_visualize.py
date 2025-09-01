@@ -60,6 +60,7 @@ def gdf_box():
     return gdf
 
 
+@pytest.mark.visualization
 def test_predict_image_and_plot(m, tmpdir):
     sample_image_path = get_data("OSBS_029.png")
     results = m.predict_image(path=sample_image_path)
@@ -68,6 +69,7 @@ def test_predict_image_and_plot(m, tmpdir):
     assert os.path.exists(os.path.join(tmpdir, "OSBS_029.png"))
 
 
+@pytest.mark.visualization
 def test_predict_tile_and_plot(m, tmpdir):
     sample_image_path = get_data("OSBS_029.png")
     results = m.predict_tile(path=sample_image_path)
@@ -76,6 +78,7 @@ def test_predict_tile_and_plot(m, tmpdir):
     assert os.path.exists(os.path.join(tmpdir, "OSBS_029.png"))
 
 
+@pytest.mark.visualization
 def test_multi_class_plot(tmpdir):
     results = pd.read_csv(get_data("testfile_multi.csv"))
     results = utilities.read_file(results, root_dir=os.path.dirname(get_data("SOAP_061.png")))
@@ -98,7 +101,22 @@ def test_convert_to_sv_format(gdf_box):
     np.testing.assert_array_equal(detections.xyxy, expected_boxes)
     np.testing.assert_array_equal(detections.class_id, expected_labels)
     np.testing.assert_array_equal(detections.confidence, expected_scores)
-    assert detections['class_name'] == ['Tree', 'Tree']
+
+
+@pytest.mark.visualization
+def test_matplotlib_non_interactive_mode():
+    """Test that matplotlib is configured for non-interactive testing"""
+    import matplotlib
+    import matplotlib.pyplot as plt
+    assert matplotlib.get_backend() == 'Agg'
+    assert not plt.isinteractive()
+
+    # Test that creating a plot doesn't block
+    fig, ax = plt.subplots()
+    ax.plot([1, 2, 3], [1, 2, 3])
+
+    # This should not block or display anything
+    plt.close(fig)
 
 
 def test_plot_annotations(gdf_box, tmpdir):

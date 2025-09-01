@@ -4,6 +4,12 @@ import os
 import urllib
 
 import pytest
+import matplotlib
+import matplotlib.pyplot as plt
+
+# Configure matplotlib to use non-interactive backend for testing
+matplotlib.use('Agg')  # Use non-interactive backend
+plt.ioff()  # Turn off interactive mode
 
 from deepforest import _ROOT
 from deepforest import get_data
@@ -12,6 +18,20 @@ from deepforest import utilities
 
 
 collect_ignore = ['setup.py']
+
+
+@pytest.fixture(autouse=True)
+def cleanup_matplotlib():
+    """Clean up matplotlib figures after each test to prevent memory leaks"""
+    yield
+    plt.close('all')  # Close all figures after each test
+
+
+@pytest.fixture(scope="session")
+def test_output_dir(tmp_path_factory):
+    """Create a test output directory for saving plots and other test artifacts"""
+    test_dir = tmp_path_factory.mktemp("test_outputs")
+    return str(test_dir)
 
 
 @pytest.fixture(scope="session")
