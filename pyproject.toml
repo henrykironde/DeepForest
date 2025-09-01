@@ -89,6 +89,7 @@ dependencies = [
     "twine",
     "xmltodict",
     "hydra-core",
+    "build>=1.3.0",
 ]
 
 [project.optional-dependencies]

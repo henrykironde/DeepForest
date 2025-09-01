@@ -10,7 +10,6 @@ from deepforest.visualize import plot_results
 
 
 def train(config: DictConfig) -> None:
-    """Train DeepForest model."""
     m = deepforest(config=config)
     m.trainer.fit(m)
 
@@ -21,13 +20,17 @@ def predict(
     output_path: str | None = None,
     plot: bool | None = False,
 ) -> None:
-    """Run prediction on input image.
+    """Run prediction for the given image, optionally saving the results to the
+    provided path and optionally visualizing the results.
 
     Args:
-        config: DeepForest configuration
-        input_path: Path to input image
-        output_path: Path to save results
-        plot: Whether to plot results
+        config (DictConfig): Hydra configuration.
+        input_path (str): Path to the input image.
+        output_path (Optional[str]): Path to save the prediction results.
+        plot (Optional[bool]): Whether to plot the results.
+
+    Returns:
+        None
     """
     m = deepforest(config=config)
     res = m.predict_tile(
@@ -46,7 +49,6 @@ def predict(
 
 
 def main():
-    """DeepForest command-line interface."""
     parser = argparse.ArgumentParser(description="DeepForest CLI")
     subparsers = parser.add_subparsers(dest="command")
 
@@ -54,14 +56,14 @@ def main():
     _ = subparsers.add_parser(
         "train",
         help="Train a model",
-        epilog="Hydra parses extra key:value arguments and uses them to override the current configuration",
+        epilog="Any remaining arguments <key>=<value> will be passed to Hydra to override the current config.",
     )
 
     # Predict subcommand
     predict_parser = subparsers.add_parser(
         "predict",
         help="Run prediction on input",
-        epilog="Hydra parses extra key:value arguments and uses them to override the current configuration",
+        epilog="Any remaining arguments <key>=<value> will be passed to Hydra to override the current config.",
     )
     predict_parser.add_argument("input", help="Path to input raster")
     predict_parser.add_argument("-o", "--output", help="Path to prediction results")
