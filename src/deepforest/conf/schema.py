@@ -68,9 +68,7 @@ class TrainConfig:
     epochs: int = 1
     fast_dev_run: bool = False
     preload_images: bool = False
-    augmentations: str | list[str] | dict[str, Any] | None = field(
-        default_factory=lambda: ["HorizontalFlip"]
-    )
+    augmentations: Any = field(default_factory=lambda: ["HorizontalFlip"])
 
 
 @dataclass
@@ -89,9 +87,7 @@ class ValidationConfig:
     iou_threshold: float = 0.4
     val_accuracy_interval: int = 20
     lr_plateau_target: str = "val_loss"
-    augmentations: str | list[str] | dict[str, Any] | None = field(
-        default_factory=lambda: []
-    )
+    augmentations: Any = field(default_factory=lambda: [])
 
 
 @dataclass
