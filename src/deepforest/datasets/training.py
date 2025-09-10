@@ -1,7 +1,6 @@
 """Dataset model for object detection tasks."""
 
 import os
-import warnings
 
 import numpy as np
 import pandas as pd
@@ -20,7 +19,6 @@ class BoxDataset(Dataset):
         csv_file: Path to CSV file with annotations
         root_dir: Directory containing images
         transforms: Function applied to each sample
-        augment: Deprecated - use augmentations instead
         augmentations: Augmentation configuration
         label_dict: Mapping from string labels to class IDs
         preload_images: Preload all images into memory
@@ -37,7 +35,6 @@ class BoxDataset(Dataset):
         root_dir,
         *,
         transforms=None,
-        augment=None,
         augmentations=None,
         label_dict=None,
         preload_images=False,
@@ -66,15 +63,6 @@ class BoxDataset(Dataset):
         self.label_dict = label_dict
 
         if transforms is None:
-            if augment is not None:
-                warnings.warn(
-                    "The `augment` parameter is deprecated. Please use `augmentations`"
-                    "Use empty list or None to disable augmentations.",
-                    stacklevel=2,
-                )
-                if not augment:
-                    augmentations = None
-
             self.transform = get_transform(augmentations=augmentations)
         else:
             self.transform = transforms

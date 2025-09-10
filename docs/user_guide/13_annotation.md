@@ -119,7 +119,7 @@ You can speed up new annotations by starting with model predictions. Below is an
 
 ```python
 from deepforest import main
-from deepforest.visualize import plot_predictions
+from deepforest.visualize import draw_predictions
 from deepforest.utilities import boxes_to_shapefile
 import rasterio as rio
 import geopandas as gpd

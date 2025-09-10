@@ -176,18 +176,6 @@ def test_draw_predictions(gdf_poly):
     assert image is not None and isinstance(image, np.ndarray)
 
 
-def test_plot_points():
-    image = visualize._load_image(get_data("OSBS_029.tif"))
-    points = np.array([[10, 10], [20, 20]])
-
-    image = visualize.plot_points(image, points)
-    assert image is not None and isinstance(image, np.ndarray)
-
-
-def test_plot_predictions(gdf_poly):
-    image = visualize._load_image(get_data("OSBS_029.tif"))
-    image = visualize.plot_predictions(image, gdf_poly)
-    assert image is not None and isinstance(image, np.ndarray)
 
 
 def test_image_from_path_or_array():

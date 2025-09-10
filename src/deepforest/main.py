@@ -194,40 +194,6 @@ class deepforest(pl.LightningModule):
         self.label_dict = label_dict
         self.numeric_to_label_dict = {v: k for k, v in label_dict.items()}
 
-    def use_release(self, check_release=True):
-        """Use the latest DeepForest model release from Hugging Face,
-        downloading if necessary. Optionally download if release doesn't exist.
-
-        Args:
-            check_release (logical): Deprecated, not in use.
-        Returns:
-            model (object): A trained PyTorch model
-        """
-
-        warnings.warn(
-            "use_release will be deprecated in 2.0. "
-            "use load_model('weecology/deepforest-tree') instead",
-            stacklevel=2,
-        )
-        self.load_model("weecology/deepforest-tree")
-
-    def use_bird_release(self, check_release=True):
-        """Use the latest DeepForest bird model release from Hugging Face,
-        downloading if necessary. model. Optionally download if release doesn't
-        exist.
-
-        Args:
-            check_release (logical): Deprecated, not in use.
-        Returns:
-            model (object): A trained pytorch model
-        """
-
-        warnings.warn(
-            "use_bird_release will be deprecated in 2.0. use load_model('bird') instead",
-            stacklevel=2,
-        )
-        self.load_model("weecology/deepforest-bird")
-
     def create_model(self, initialize_model=False):
         """Initialize a deepforest architecture. This can be done in two ways.
         Passed as the model argument to deepforest __init__(), or as a named
@@ -417,7 +383,6 @@ class deepforest(pl.LightningModule):
         root_dir=None,
         shuffle=True,
         transforms=None,
-        augment=None,
         augmentations=None,
         preload_images=False,
         batch_size=1,
@@ -434,21 +399,10 @@ class deepforest(pl.LightningModule):
             transforms: Albumentations transforms
             batch_size: batch size
             preload_images: if True, preload the images into memory
-            augment: deprecated. If True, apply augmentations to the images
             augmentations: augmentation configuration (str, list, or dict)
         Returns:
             ds: a pytorch dataset
         """
-
-        if augment is not None:
-            warnings.warn(
-                "The `augment` parameter is deprecated. Please use `augmentations` instead "
-                "and provide an empty list or None to disable augmentations.",
-                stacklevel=2,
-            )
-
-            if not augment:
-                augmentations = None
 
         ds = training.BoxDataset(
             csv_file=csv_file,
