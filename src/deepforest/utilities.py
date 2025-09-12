@@ -172,24 +172,12 @@ def convert_point_to_bbox(gdf, buffer_size):
     return gdf
 
 
-def xml_to_annotations(xml_path):
-    warnings.warn(
-        "xml_to_annotations will be deprecated in 2.0. Please use read_pascal_voc instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
-
-    return read_pascal_voc(xml_path)
-
-
 def shapefile_to_annotations(
     shapefile,
     rgb=None,
     root_dir=None,
     buffer_size=None,
     convert_point=False,
-    geometry_type=None,
-    save_dir=None,
 ):
     """Convert shapefile annotations to DeepForest format.
 
@@ -199,27 +187,10 @@ def shapefile_to_annotations(
         root_dir: Directory to prepend to image paths
         buffer_size: Buffer size for point-to-polygon conversion
         convert_point: Convert points to bounding boxes
-        geometry_type: Deprecated - will be inferred automatically
-        save_dir: Deprecated - returns DataFrame instead
 
     Returns:
         GeoDataFrame with annotations
     """
-    # Deprecation of previous arguments
-    if geometry_type:
-        warnings.warn(
-            "geometry_type argument is deprecated and will be removed in DeepForest 2.0. "
-            "The function will infer geometry from the shapefile directly.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-    if save_dir:
-        warnings.warn(
-            "save_dir argument is deprecated and will be removed in DeepForest 2.0. "
-            "The function will return a pandas dataframe instead of saving to disk.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
 
     # Read shapefile
     if isinstance(shapefile, str):
@@ -839,11 +810,6 @@ def boxes_to_shapefile(df, root_dir, projected=True, flip_y_axis=False):
      Returns:
          GeoDataFrame with boxes, optionally transformed to the target CRS.
     """
-    warnings.warn(
-        "This function will be deprecated in DeepForest 2.0. Use `image_to_geo_coordinates` instead.",
-        DeprecationWarning,
-        stacklevel=2,
-    )
 
     # Warn if both projected and flip_y_axis are True
     if flip_y_axis and projected:
@@ -910,36 +876,3 @@ def boxes_to_shapefile(df, root_dir, projected=True, flip_y_axis=False):
         df = gpd.GeoDataFrame(df, geometry="geometry")
 
         return df
-
-
-def annotations_to_shapefile(df, transform, crs):
-    """Convert output from predict_image and  predict_tile to a geopandas
-    data.frame.
-
-    Args:
-        df: prediction data.frame with columns  ['xmin','ymin','xmax','ymax','label','score']
-        transform: A rasterio affine transform object
-        crs: A rasterio crs object
-    Returns:
-        results: a geopandas dataframe where every entry is the bounding box for a detected tree.
-    """
-
-    raise NotImplementedError(
-        "This function is deprecated. Please use image_to_geo_coordinates instead."
-    )
-
-
-def project_boxes(df, root_dir, transform=True):
-    """
-    Convert from image coordinates to geographic coordinates
-    Note that this assumes df is just a single plot being passed to this function
-    df: a pandas type dataframe with columns: name, xmin, ymin, xmax, ymax.
-    Name is the relative path to the root_dir arg.
-    root_dir: directory of images to lookup image_path column
-    transform: If true, convert from image to geographic coordinates
-    """
-    raise NotImplementedError(
-        "This function is deprecated. Please use image_to_geo_coordinates instead."
-    )
-
-    return df

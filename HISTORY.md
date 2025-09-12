@@ -1,5 +1,33 @@
 # DeepForest Changelog
 
+## Version 2.0.0 (Date: TBD)
+
+### Breaking Changes - Deprecated Functions and Parameters Removed
+
+The following deprecated functions and parameters have been removed in version 2.0:
+
+**Removed Functions:**
+- `plot_points()` and `plot_predictions()` from `deepforest.visualize` (use `draw_points()` and `draw_predictions()` instead)
+- `xml_to_annotations()` from `deepforest.utilities` (use `read_pascal_voc()` instead)
+- `use_release()` and `use_bird_release()` from `deepforest.main` (use `load_model()` instead)
+- `annotations_to_shapefile()` and `project_boxes()` from `deepforest.utilities` (use `image_to_geo_coordinates()` instead)
+
+**Removed Parameters:**
+- `augment` parameter from `load_dataset()`, `get_transform()`, and `BoxDataset` (use `augmentations` instead)
+- `check_release` parameter from `use_release()` and `use_bird_release()`
+- `geometry_type` and `save_dir` parameters from `shapefile_to_annotations()`
+- `return_plot`, `color`, and `thickness` parameters from `predict()` and `predict_tile()`
+- `base_dir` parameter from `crop_function()` (use `save_dir` instead)
+
+**Migration Guide:**
+- Replace `plot_points()` → `draw_points()`
+- Replace `plot_predictions()` → `draw_predictions()`
+- Replace `xml_to_annotations()` → `read_pascal_voc()`
+- Replace `use_release()` → `load_model("weecology/deepforest-tree")`
+- Replace `use_bird_release()` → `load_model("weecology/deepforest-bird")`
+- Replace `augment=True` → `augmentations="default"`
+- Replace `augment=False` → `augmentations=None`
+
 ## Version x.x.x (Date: )
 
 - **Deprecation:** `predict_tile` in `deepforest/main.py`. The `raster_path` argument is deprecated and will be removed in a future version.
@@ -56,7 +84,6 @@ Additional features and enhancements include:
 
 - **Enhancement:** The training module better matches torchvision negative anchors format for empty frames.
 
-- **Deprecation:** `shapefile_to_annotations` in `deepforest/utilities.py` is deprecated in favor of the more general `read_file` method.
 - **Deprecation:** `predict` in `deepforest/main.py`. The `return_plot` argument is deprecated and will be removed in version 2.0. Use `visualize.plot_results` instead.
 - **Deprecation:** `predict_tile` in `deepforest/main.py`. Deprecated arguments `return_plot`, `color`, and `thickness` will be removed in version 2.0.
 - **Deprecation:** `crop_function` in `deepforest/preprocess.py`. The `base_dir` argument is deprecated and will be removed in version 2.0. Use `save_dir` instead.
@@ -84,7 +111,7 @@ Additional features and enhancements include:
 ## Version 1.1.1 (Date: Sep 14, 2021)
 
 - **Update:** `project_boxes` now includes output options for both `predict_tile` and `predict_image`.
-- **New Feature:** Introduced `annotations_to_shapefile`, which reverses `shapefile_to_annotations` functionality.  
+- **New Feature:** Introduced `annotations_to_shapefile`, which reverses `shapefile_to_annotations` functionality.
   Thanks to @sdtaylor for this contribution.
 
 ## Version 1.1.0 (Date: Aug 5, 2021)

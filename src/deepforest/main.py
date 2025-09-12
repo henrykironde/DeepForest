@@ -32,6 +32,9 @@ class deepforest(pl.LightningModule):
         existing_val_dataloader: PyTorch dataloader for validation data
         config: DeepForest configuration object
         config_args: Dictionary of config overrides
+
+    Returns:
+        DeepForest PyTorch Lightning module
     """
 
     def __init__(
@@ -190,40 +193,6 @@ class deepforest(pl.LightningModule):
 
         self.label_dict = label_dict
         self.numeric_to_label_dict = {v: k for k, v in label_dict.items()}
-
-    def use_release(self, check_release=True):
-        """Use the latest DeepForest model release from Hugging Face,
-        downloading if necessary. Optionally download if release doesn't exist.
-
-        Args:
-            check_release (logical): Deprecated, not in use.
-        Returns:
-            model (object): A trained PyTorch model
-        """
-
-        warnings.warn(
-            "use_release will be deprecated in 2.0. "
-            "use load_model('weecology/deepforest-tree') instead",
-            stacklevel=2,
-        )
-        self.load_model("weecology/deepforest-tree")
-
-    def use_bird_release(self, check_release=True):
-        """Use the latest DeepForest bird model release from Hugging Face,
-        downloading if necessary. model. Optionally download if release doesn't
-        exist.
-
-        Args:
-            check_release (logical): Deprecated, not in use.
-        Returns:
-            model (object): A trained pytorch model
-        """
-
-        warnings.warn(
-            "use_bird_release will be deprecated in 2.0. use load_model('bird') instead",
-            stacklevel=2,
-        )
-        self.load_model("weecology/deepforest-bird")
 
     def create_model(self, initialize_model=False):
         """Initialize a deepforest architecture. This can be done in two ways.
@@ -414,7 +383,6 @@ class deepforest(pl.LightningModule):
         root_dir=None,
         shuffle=True,
         transforms=None,
-        augment=None,
         augmentations=None,
         preload_images=False,
         batch_size=1,
@@ -431,21 +399,10 @@ class deepforest(pl.LightningModule):
             transforms: Albumentations transforms
             batch_size: batch size
             preload_images: if True, preload the images into memory
-            augment: deprecated. If True, apply augmentations to the images
             augmentations: augmentation configuration (str, list, or dict)
         Returns:
             ds: a pytorch dataset
         """
-
-        if augment is not None:
-            warnings.warn(
-                "The `augment` parameter is deprecated. Please use `augmentations` instead "
-                "and provide an empty list or None to disable augmentations.",
-                stacklevel=2,
-            )
-
-            if not augment:
-                augmentations = None
 
         ds = training.BoxDataset(
             csv_file=csv_file,
@@ -809,8 +766,8 @@ class deepforest(pl.LightningModule):
         """Evaluate a batch."""
         images, targets, image_names = batch
 
-        # Set model to train mode to return loss, but disable optimization.
-        # Torchvision does not return loss in eval mode.
+        # Get loss from "train" mode without optimization. Torchvision
+        # uses 'train' mode for loss and 'eval' mode for predictions.
         self.model.train()
         with torch.no_grad():
             loss_dict = self.model.forward(images, targets)
@@ -924,7 +881,7 @@ class deepforest(pl.LightningModule):
     def log_epoch_metrics(self):
         if len(self.iou_metric.groundtruth_labels) > 0:
             output = self.iou_metric.compute()
-            # Lightning bug: claims this is a warning but it's not. See issue #16218 in Lightning-AI/pytorch-lightning
+            # Lightning bug: claims this is a warning but it's not. See issue #16218
             try:
                 self.log_dict(output)
             except Exception:
@@ -1023,11 +980,11 @@ class deepforest(pl.LightningModule):
         """
         self.model.eval()
 
-        # convert to tensor if input is array
+        # conver to tensor if input is array
         if isinstance(images, np.ndarray):
             images = torch.tensor(images, device=self.device)
 
-        # apply preprocessing if available
+        # appy preprocessing if available
         if preprocess_fn:
             images = preprocess_fn(images)
 
@@ -1100,7 +1057,7 @@ class deepforest(pl.LightningModule):
                 eps=params["eps"],
             )
 
-        # Monitor learning rate if val data is used
+        # Monitor rate is val data is used
         if self.config.validation.csv_file is not None:
             return {
                 "optimizer": optimizer,
@@ -1181,7 +1138,7 @@ class deepforest(pl.LightningModule):
         if results["class_recall"] is not None:
             for key, value in results.items():
                 if key in ["class_recall"]:
-                    for _, row in value.iterrows():
+                    for _index, row in value.iterrows():
                         try:
                             self.log(
                                 "{}_Recall".format(

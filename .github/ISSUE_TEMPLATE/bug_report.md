@@ -21,7 +21,7 @@ import os
 
 # Use the latest release
 m = main.deepforest()
-m.use_release()
+m.load_model("weecology/deepforest-tree")
 
 # Use package data for simple training example
 m.config.train.csv_file = get_data("example.csv")
