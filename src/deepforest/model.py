@@ -177,10 +177,10 @@ class CropModel(LightningModule):
             None
         """
         self.train_ds = ImageFolder(
-            root=train_dir, transform=self.get_transform(augment=True)
+            root=train_dir, transform=self.get_transform(augmentations=["HorizontalFlip"])
         )
         self.val_ds = ImageFolder(
-            root=val_dir, transform=self.get_transform(augment=False)
+            root=val_dir, transform=self.get_transform(augmentations=None)
         )
         self.label_dict = self.train_ds.class_to_idx
 
