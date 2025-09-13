@@ -149,18 +149,31 @@ class BoxDataset(Dataset):
             return image, targets, self.image_names[idx]
 
         # Apply augmentations
+        # Convert numpy arrays to tensors for Kornia
+        image_tensor = torch.from_numpy(image).float()
+        bboxes_tensor = torch.from_numpy(targets["boxes"]).float()
+        labels_tensor = torch.from_numpy(targets["labels"].astype(np.int64))
+
         augmented = self.transform(
-            image=image,
-            bboxes=targets["boxes"],
-            category_ids=targets["labels"].astype(np.int64),
+            image=image_tensor,
+            bboxes=bboxes_tensor,
+            category_ids=labels_tensor,
         )
         image = augmented["image"]
 
         # Convert boxes to tensor
-        boxes = np.array(augmented["bboxes"])
-        boxes = torch.from_numpy(boxes).float()
-        labels = np.array(augmented["category_ids"])
-        labels = torch.from_numpy(labels.astype(np.int64))
+        if isinstance(augmented["bboxes"], torch.Tensor):
+            boxes = augmented["bboxes"]
+        else:
+            boxes = torch.from_numpy(np.array(augmented["bboxes"])).float()
+
+        if isinstance(augmented["category_ids"], torch.Tensor):
+            labels = augmented["category_ids"]
+        else:
+            labels = torch.from_numpy(
+                np.array(augmented["category_ids"]).astype(np.int64)
+            )
+
         targets = {"boxes": boxes, "labels": labels}
 
         return image, targets, self.image_names[idx]
