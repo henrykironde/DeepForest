@@ -191,11 +191,13 @@ class CropModel(LightningModule):
             self.num_classes = len(self.label_dict)
             self.create_model(num_classes=self.num_classes)
 
-    def get_transform(self, augment):
+    def get_transform(self, augmentations=None):
         """Returns the data transformation pipeline for the model.
 
         Args:
-            augment (bool): Flag indicating whether to apply data augmentation.
+            augmentations (str, list, dict, optional): Augmentation configuration.
+                If None, no augmentations are applied. If "HorizontalFlip" or
+                ["HorizontalFlip"], applies random horizontal flip.
 
         Returns:
             torchvision.transforms.Compose: The composed data transformation pipeline.
@@ -204,8 +206,14 @@ class CropModel(LightningModule):
         data_transforms.append(transforms.ToTensor())
         data_transforms.append(self.normalize())
         data_transforms.append(transforms.Resize([224, 224]))
-        if augment:
-            data_transforms.append(transforms.RandomHorizontalFlip(0.5))
+
+        # Apply augmentations if specified
+        if augmentations is not None:
+            if isinstance(augmentations, str) and augmentations == "HorizontalFlip":
+                data_transforms.append(transforms.RandomHorizontalFlip(0.5))
+            elif isinstance(augmentations, list) and "HorizontalFlip" in augmentations:
+                data_transforms.append(transforms.RandomHorizontalFlip(0.5))
+
         return transforms.Compose(data_transforms)
 
     def expand_bbox_to_square(self, bbox, image_width, image_height):

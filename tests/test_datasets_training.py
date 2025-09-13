@@ -81,7 +81,7 @@ def test_BoxDataset_transform(augment):
     root_dir = os.path.dirname(csv_file)
     ds = BoxDataset(csv_file=csv_file,
                              root_dir=root_dir,
-                             augment=augment)
+                             augmentations=["HorizontalFlip"] if augment else None)
 
     for i in range(len(ds)):
         # Between 0 and 1

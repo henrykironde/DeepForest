@@ -248,13 +248,12 @@ class AlbumentationsCompatibleTransform:
         # Apply Kornia transforms
         transformed_image = self.kornia_transform(image)
 
-        # Convert back to (H, W, C) format
+        # Convert back to (C, H, W) format (keep channels first for PyTorch)
         if squeeze_output:
             transformed_image = transformed_image.squeeze(0)
 
-        # Convert back to (H, W, C) if it was originally in that format
-        if transformed_image.dim() == 3 and transformed_image.shape[0] == 3:
-            transformed_image = transformed_image.permute(1, 2, 0)
+        # Keep in (C, H, W) format - don't convert back to (H, W, C)
+        # The model expects (C, H, W) format
 
         # For now, return bboxes and category_ids unchanged
         # In a full implementation, you'd need to transform bboxes based on the applied transforms
