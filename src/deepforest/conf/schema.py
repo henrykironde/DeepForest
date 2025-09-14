@@ -118,6 +118,12 @@ class Config:
     score_thresh: float = 0.1
     model: ModelConfig = field(default_factory=ModelConfig)
 
+    # Model serialization settings
+    # Set to false for backward compatibility with older tools that expect .bin files
+    # Set to true to explicitly use safetensors format
+    # Leave as null to use default behavior (safetensors for transformers >=4.35.0)
+    safe_serialization: Optional[bool] = None
+
     # Preprocessing
     path_to_raster: Optional[str] = MISSING
     patch_size: int = 400

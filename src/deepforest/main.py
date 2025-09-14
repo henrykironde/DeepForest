@@ -112,7 +112,7 @@ class deepforest(pl.LightningModule):
 
         self.save_hyperparameters({"config": self.config})
 
-    def load_model(self, model_name=None, revision=None):
+    def load_model(self, model_name=None, revision=None, safe_serialization=None):
         """Loads a model that has already been pretrained for a specific task,
         like tree crown detection.
 
@@ -126,6 +126,9 @@ class deepforest(pl.LightningModule):
         Args:
             model_name (str): A repository ID for huggingface in the form of organization/repository
             revision (str): The model version ('main', 'v1.0.0', etc.).
+            safe_serialization (bool, optional): If False, forces pickle format for backward compatibility.
+                                              If None, uses default behavior (safetensors for transformers >=4.35.0).
+                                              If True, explicitly uses safetensors format.
 
         Returns:
             None
@@ -136,6 +139,10 @@ class deepforest(pl.LightningModule):
 
         if revision is None:
             revision = self.config.model.revision
+
+        # Store safe_serialization preference in config for model loading
+        if safe_serialization is not None:
+            self.config.safe_serialization = safe_serialization
 
         model_class = importlib.import_module("deepforest.models.{}".format(
             self.config.architecture))
