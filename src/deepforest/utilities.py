@@ -863,6 +863,8 @@ def allowlist_omegaconf_for_weights_only():
 
     # Allowlist OmegaConf DictConfig and related classes
     # These are needed when loading checkpoints that contain config objects
+    import typing
+
     from omegaconf import DictConfig, ListConfig, OmegaConf
 
     # Import additional OmegaConf classes that may be in checkpoints
@@ -875,5 +877,9 @@ def allowlist_omegaconf_for_weights_only():
     except ImportError:
         # ContainerMetadata might not be available in all OmegaConf versions
         pass
+
+    # typing.Any is commonly used in type annotations and may be in checkpoints
+    # This is safe to allowlist as it's just a type hint, not executable code
+    omega_classes.append(typing.Any)
 
     torch.serialization.add_safe_globals(omega_classes)
