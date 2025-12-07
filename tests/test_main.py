@@ -12,7 +12,7 @@ import copy
 import importlib.util
 
 from deepforest import main, get_data, model
-from deepforest.utilities import read_file, format_geometry
+from deepforest.utilities import read_file, format_geometry, allowlist_omegaconf_for_weights_only
 from deepforest.datasets import prediction
 from deepforest.visualize import plot_results
 
@@ -567,7 +567,18 @@ def test_checkpoint_label_dict(m, tmpdir):
     m.numeric_to_label_dict = {0: "Object"}
     m.trainer.fit(m)
     m.trainer.save_checkpoint("{}/checkpoint.pl".format(tmpdir))
-    after = main.deepforest.load_from_checkpoint("{}/checkpoint.pl".format(tmpdir))
+
+    # Allowlist OmegaConf classes for secure weights_only loading
+    # Fall back to weights_only=False for older PyTorch versions
+    try:
+        allowlist_omegaconf_for_weights_only()
+        weights_only = True
+    except AttributeError:
+        weights_only = False
+
+    after = main.deepforest.load_from_checkpoint(
+        "{}/checkpoint.pl".format(tmpdir), weights_only=weights_only
+    )
     assert after.label_dict == {"Object": 0}
     assert after.numeric_to_label_dict == {0: "Object"}
 
@@ -582,7 +593,17 @@ def test_save_and_reload_checkpoint(m, tmpdir):
     m.save_model("{}/checkpoint.pl".format(tmpdir))
 
     # reload the checkpoint to model object
-    after = main.deepforest.load_from_checkpoint("{}/checkpoint.pl".format(tmpdir))
+    # Allowlist OmegaConf classes for secure weights_only loading
+    # Fall back to weights_only=False for older PyTorch versions
+    try:
+        allowlist_omegaconf_for_weights_only()
+        weights_only = True
+    except AttributeError:
+        weights_only = False
+
+    after = main.deepforest.load_from_checkpoint(
+        "{}/checkpoint.pl".format(tmpdir), weights_only=weights_only
+    )
     pred_after_reload = after.predict_image(path=img_path)
 
     assert not pred_after_train.empty
@@ -620,8 +641,20 @@ def test_reload_multi_class(two_class_m, tmpdir):
     before = two_class_m.trainer.validate(two_class_m)
 
     # reload
-    old_model = main.deepforest.load_from_checkpoint("{}/checkpoint.pl".format(tmpdir),
-                                                     weights_only=True)
+    # Try to allowlist OmegaConf classes for secure weights_only=True loading
+    # If PyTorch version < 2.6.0, fall back to weights_only=False
+    # This is safe for test checkpoints (trusted source)
+    try:
+        allowlist_omegaconf_for_weights_only()
+        weights_only = True
+    except AttributeError:
+        # PyTorch < 2.6.0 doesn't support add_safe_globals
+        # For test checkpoints (trusted source), weights_only=False is acceptable
+        weights_only = False
+
+    old_model = main.deepforest.load_from_checkpoint(
+        "{}/checkpoint.pl".format(tmpdir), weights_only=weights_only
+    )
     old_model.config = two_class_m.config
     assert old_model.config.num_classes == 2
     old_model.create_trainer()

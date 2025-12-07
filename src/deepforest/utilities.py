@@ -821,3 +821,59 @@ def image_to_geo_coordinates(gdf, root_dir=None, flip_y_axis=False):
 def collate_fn(batch):
     batch = list(filter(lambda x: x is not None, batch))
     return tuple(zip(*batch, strict=False))
+
+
+def allowlist_omegaconf_for_weights_only():
+    """Allowlist OmegaConf classes for use with torch.load(weights_only=True).
+
+    This function registers OmegaConf DictConfig and related classes as safe
+    for use with PyTorch's weights_only loading mode. This is necessary when
+    loading PyTorch Lightning checkpoints that contain OmegaConf configuration
+    objects in their hyperparameters.
+
+    Note: Only use this if you trust the source of your checkpoints, as it
+    allows deserialization of OmegaConf objects during checkpoint loading.
+
+    Note: This function requires PyTorch 2.6.0 or later. For older versions,
+    use weights_only=False when loading checkpoints.
+
+    Example:
+        >>> from deepforest.utilities import allowlist_omegaconf_for_weights_only
+        >>> import torch
+        >>> allowlist_omegaconf_for_weights_only()
+        >>> # Now you can load checkpoints with weights_only=True
+        >>> checkpoint = torch.load("checkpoint.ckpt", weights_only=True)
+
+    See Also:
+        PyTorch documentation on weights_only loading and safe globals:
+        https://pytorch.org/docs/stable/serialization.html#torch-load-weights-only
+
+    Raises:
+        AttributeError: If PyTorch version is < 2.6.0 and add_safe_globals is not available.
+    """
+    import torch
+
+    # Check if add_safe_globals is available (PyTorch 2.6.0+)
+    if not hasattr(torch.serialization, "add_safe_globals"):
+        raise AttributeError(
+            f"torch.serialization.add_safe_globals is not available in PyTorch {torch.__version__}. "
+            "This feature requires PyTorch 2.6.0 or later. "
+            "For older PyTorch versions, use weights_only=False when loading checkpoints."
+        )
+
+    # Allowlist OmegaConf DictConfig and related classes
+    # These are needed when loading checkpoints that contain config objects
+    from omegaconf import DictConfig, ListConfig, OmegaConf
+
+    # Import additional OmegaConf classes that may be in checkpoints
+    # ContainerMetadata is used internally by DictConfig/ListConfig
+    omega_classes = [DictConfig, ListConfig, OmegaConf]
+    try:
+        from omegaconf.base import ContainerMetadata
+
+        omega_classes.append(ContainerMetadata)
+    except ImportError:
+        # ContainerMetadata might not be available in all OmegaConf versions
+        pass
+
+    torch.serialization.add_safe_globals(omega_classes)
