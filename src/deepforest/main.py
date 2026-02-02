@@ -17,7 +17,7 @@ from torchmetrics.classification import BinaryAccuracy
 from torchmetrics.detection import IntersectionOverUnion, MeanAveragePrecision
 
 from deepforest import evaluate as evaluate_iou
-from deepforest import predict, utilities
+from deepforest import memory, predict, utilities
 from deepforest.datasets import prediction, training
 
 
@@ -404,12 +404,20 @@ class deepforest(pl.LightningModule):
         )
         return loader
 
-    def predict_image(self, image: np.ndarray | None = None, path: str | None = None):
+    def predict_image(
+        self,
+        image: np.ndarray | None = None,
+        path: str | None = None,
+        profile_memory: bool = False,
+        profile_memory_interval_s: float = 0.1,
+    ):
         """Predict a single image with a deepforest model.
 
         Args:
             image: a float32 numpy array of a RGB with channels last format
             path: optional path to read image from disk instead of passing image arg
+            profile_memory: If True, prints available RAM before loading and peak RSS during prediction.
+            profile_memory_interval_s: Sampling interval for peak RSS tracking.
 
         Returns:
             result: A pandas dataframe of predictions (Default)
@@ -417,49 +425,86 @@ class deepforest(pl.LightningModule):
         # Ensure we are in eval mode
         self.model.eval()
 
-        if path:
-            image = np.array(Image.open(path).convert("RGB")).astype("float32")
-
-        # sanity checks on input images
-        if not isinstance(image, np.ndarray):
-            raise TypeError(
-                f"Input image is of type {type(image)}, expected numpy, if reading "
-                "from PIL, wrap in "
-                "np.array(image).astype(float32)"
-            )
-
-        if image.dtype != "float32":
-            warnings.warn(
-                f"Image type is {image.dtype}, transforming to float32. "
-                f"This assumes that the range of pixel values is 0-255, as "
-                f"opposed to 0-1.To suppress this warning, transform image "
-                f"(image.astype('float32')",
-                stacklevel=2,
-            )
-            image = image.astype("float32")
-
-        result = predict._predict_image_(
-            model=self.model, image=image, path=path, nms_thresh=self.config.nms_thresh
+        monitor = (
+            memory.PeakMemoryMonitor(interval_s=profile_memory_interval_s)
+            if profile_memory
+            else None
         )
+        if monitor is not None:
+            available = memory.get_available_system_memory_bytes()
+            if available is not None:
+                print(
+                    f"[deepforest] Available RAM before image load: {memory.format_bytes(available)}"
+                )
+            monitor.__enter__()
 
-        # If there were no predictions, return None
-        if result is None:
-            return None
-        else:
-            result["label"] = result.label.apply(lambda x: self.numeric_to_label_dict[x])
+        try:
+            if path:
+                image = np.array(Image.open(path).convert("RGB")).astype("float32")
 
-        if path is None:
-            warnings.warn(
-                "An image was passed directly to predict_image, the result.root_dir attribute "
-                "will be None in the output dataframe, to use visualize.plot_results, "
-                "please assign results.root_dir = <directory name>",
-                stacklevel=2,
+            # sanity checks on input images
+            if not isinstance(image, np.ndarray):
+                raise TypeError(
+                    f"Input image is of type {type(image)}, expected numpy, if reading "
+                    "from PIL, wrap in "
+                    "np.array(image).astype(float32)"
+                )
+
+            if image.dtype != "float32":
+                warnings.warn(
+                    f"Image type is {image.dtype}, transforming to float32. "
+                    f"This assumes that the range of pixel values is 0-255, as "
+                    f"opposed to 0-1.To suppress this warning, transform image "
+                    f"(image.astype('float32')",
+                    stacklevel=2,
+                )
+                image = image.astype("float32")
+
+            result = predict._predict_image_(
+                model=self.model,
+                image=image,
+                path=path,
+                nms_thresh=self.config.nms_thresh,
             )
-        else:
-            root_dir = os.path.dirname(path)
-            result = utilities.read_file(result, root_dir=root_dir)
 
-        return result
+            # If there were no predictions, return None
+            if result is None:
+                return None
+            else:
+                result["label"] = result.label.apply(
+                    lambda x: self.numeric_to_label_dict[x]
+                )
+
+            if path is None:
+                warnings.warn(
+                    "An image was passed directly to predict_image, the result.root_dir attribute "
+                    "will be None in the output dataframe, to use visualize.plot_results, "
+                    "please assign results.root_dir = <directory name>",
+                    stacklevel=2,
+                )
+            else:
+                root_dir = os.path.dirname(path)
+                result = utilities.read_file(result, root_dir=root_dir)
+
+            return result
+        finally:
+            if monitor is not None:
+                monitor.__exit__(None, None, None)
+                stats = monitor.stats()
+                if stats.rss_max_bytes is not None:
+                    print(
+                        f"[deepforest] Peak RSS during prediction: {memory.format_bytes(stats.rss_max_bytes)}"
+                    )
+                if stats.cuda_max_allocated_bytes is not None:
+                    print(
+                        "[deepforest] Peak CUDA allocated during prediction: "
+                        f"{memory.format_bytes(stats.cuda_max_allocated_bytes)}"
+                    )
+                if stats.cuda_max_reserved_bytes is not None:
+                    print(
+                        "[deepforest] Peak CUDA reserved during prediction: "
+                        f"{memory.format_bytes(stats.cuda_max_reserved_bytes)}"
+                    )
 
     def predict_file(
         self,
@@ -505,6 +550,8 @@ class deepforest(pl.LightningModule):
         iou_threshold=0.15,
         dataloader_strategy="single",
         crop_model=None,
+        profile_memory: bool = False,
+        profile_memory_interval_s: float = 0.1,
     ):
         """For images too large to input into the model, predict_tile cuts the
         image into overlapping windows, predicts trees on each window and
@@ -528,97 +575,145 @@ class deepforest(pl.LightningModule):
         self.model.eval()
         self.model.nms_thresh = self.config.nms_thresh
 
-        # Check if path or image is provided
-        if dataloader_strategy == "single":
-            if path is None and image is None:
-                raise ValueError(
-                    "Either path or image must be provided for single tile prediction"
+        monitor = (
+            memory.PeakMemoryMonitor(interval_s=profile_memory_interval_s)
+            if profile_memory
+            else None
+        )
+        if monitor is not None:
+            available = memory.get_available_system_memory_bytes()
+            if available is not None:
+                print(
+                    f"[deepforest] Available RAM before image load: {memory.format_bytes(available)}"
                 )
+            monitor.__enter__()
 
-        if dataloader_strategy == "batch":
-            if path is None:
-                raise ValueError(
-                    "path argument must be provided when using dataloader_strategy='batch'"
-                )
-
-        # Convert single path to list for consistent handling
-        if isinstance(path, str):
-            paths = [path]
-        elif path is None:
-            paths = [None]
-        else:
-            paths = path
-
-        image_results = []
-        if dataloader_strategy in ["single", "window"]:
-            for image_path in paths:
-                if dataloader_strategy == "single":
-                    ds = prediction.SingleImage(
-                        path=image_path,
-                        image=image,
-                        patch_overlap=patch_overlap,
-                        patch_size=patch_size,
+        try:
+            # Check if path or image is provided
+            if dataloader_strategy == "single":
+                if path is None and image is None:
+                    raise ValueError(
+                        "Either path or image must be provided for single tile prediction"
                     )
-                else:
-                    # Check for workers config when using out of memory dataset
-                    if self.config.workers > 0:
-                        raise ValueError(
-                            "workers must be 0 when using out-of-memory dataset "
-                            "(dataloader_strategy='window'). Set config['workers']=0 and recreate "
-                            "trainer self.create_trainer()."
+
+            if dataloader_strategy == "batch":
+                if path is None:
+                    raise ValueError(
+                        "path argument must be provided when using dataloader_strategy='batch'"
+                    )
+
+            # Convert single path to list for consistent handling
+            if isinstance(path, str):
+                paths = [path]
+            elif path is None:
+                paths = [None]
+            else:
+                paths = path
+
+            image_results = []
+            if dataloader_strategy in ["single", "window"]:
+                for image_path in paths:
+                    if profile_memory and image_path is not None:
+                        available = memory.get_available_system_memory_bytes()
+                        if available is not None:
+                            print(
+                                "[deepforest] Available RAM before image load "
+                                f"({os.path.basename(image_path)}): {memory.format_bytes(available)}"
+                            )
+
+                    if dataloader_strategy == "single":
+                        ds = prediction.SingleImage(
+                            path=image_path,
+                            image=image,
+                            patch_overlap=patch_overlap,
+                            patch_size=patch_size,
                         )
-                    ds = prediction.TiledRaster(
-                        path=image_path,
-                        patch_overlap=patch_overlap,
-                        patch_size=patch_size,
-                    )
+                    else:
+                        # Check for workers config when using out of memory dataset
+                        if self.config.workers > 0:
+                            raise ValueError(
+                                "workers must be 0 when using out-of-memory dataset "
+                                "(dataloader_strategy='window'). Set config['workers']=0 and recreate "
+                                "trainer self.create_trainer()."
+                            )
+                        ds = prediction.TiledRaster(
+                            path=image_path,
+                            patch_overlap=patch_overlap,
+                            patch_size=patch_size,
+                        )
+
+                    dataloader = self.predict_dataloader(ds)
+                    batched_results = self.trainer.predict(self, dataloader)
+
+                    # Flatten list from batched prediction
+                    # Track global window index across batches
+                    global_window_idx = 0
+                    for _idx, batch in enumerate(batched_results):
+                        for _window_idx, window_result in enumerate(batch):
+                            formatted_result = ds.postprocess(
+                                window_result, global_window_idx
+                            )
+                            image_results.append(formatted_result)
+                            global_window_idx += 1
+
+                    # Ensure raster datasets are closed promptly
+                    if hasattr(ds, "close"):
+                        ds.close()
+
+                if not image_results:
+                    results = pd.DataFrame()
+                else:
+                    results = pd.concat(image_results)
+
+            elif dataloader_strategy == "batch":
+                if profile_memory:
+                    available = memory.get_available_system_memory_bytes()
+                    if available is not None:
+                        print(
+                            "[deepforest] Available RAM before image load (batch): "
+                            f"{memory.format_bytes(available)}"
+                        )
+
+                self.original_batch_structure.clear()
+                ds = prediction.MultiImage(
+                    paths=paths, patch_overlap=patch_overlap, patch_size=patch_size
+                )
 
                 dataloader = self.predict_dataloader(ds)
                 batched_results = self.trainer.predict(self, dataloader)
 
                 # Flatten list from batched prediction
-                # Track global window index across batches
-                global_window_idx = 0
-                for _idx, batch in enumerate(batched_results):
-                    for _window_idx, window_result in enumerate(batch):
-                        formatted_result = ds.postprocess(
-                            window_result, global_window_idx
-                        )
-                        image_results.append(formatted_result)
-                        global_window_idx += 1
+                for idx, batch in enumerate(batched_results):
+                    formatted_result = ds.postprocess(
+                        batch, idx, self.original_batch_structure
+                    )
+                    image_results.append(formatted_result)
 
-                # Ensure raster datasets are closed promptly
-                if hasattr(ds, "close"):
-                    ds.close()
+                if not image_results:
+                    results = pd.DataFrame()
+                else:
+                    results = pd.concat(image_results)
 
-            if not image_results:
-                results = pd.DataFrame()
             else:
-                results = pd.concat(image_results)
-
-        elif dataloader_strategy == "batch":
-            self.original_batch_structure.clear()
-            ds = prediction.MultiImage(
-                paths=paths, patch_overlap=patch_overlap, patch_size=patch_size
-            )
-
-            dataloader = self.predict_dataloader(ds)
-            batched_results = self.trainer.predict(self, dataloader)
-
-            # Flatten list from batched prediction
-            for idx, batch in enumerate(batched_results):
-                formatted_result = ds.postprocess(
-                    batch, idx, self.original_batch_structure
-                )
-                image_results.append(formatted_result)
-
-            if not image_results:
-                results = pd.DataFrame()
-            else:
-                results = pd.concat(image_results)
-
-        else:
-            raise ValueError(f"Invalid dataloader_strategy: {dataloader_strategy}")
+                raise ValueError(f"Invalid dataloader_strategy: {dataloader_strategy}")
+        finally:
+            if monitor is not None:
+                monitor.__exit__(None, None, None)
+                stats = monitor.stats()
+                if stats.rss_max_bytes is not None:
+                    print(
+                        f"[deepforest] Peak RSS during prediction: {memory.format_bytes(stats.rss_max_bytes)}"
+                    )
+                if stats.cuda_max_allocated_bytes is not None:
+                    print(
+                        "[deepforest] Peak CUDA allocated during prediction: "
+                        f"{memory.format_bytes(stats.cuda_max_allocated_bytes)}"
+                    )
+                if stats.cuda_max_reserved_bytes is not None:
+                    print(
+                        "[deepforest] Peak CUDA reserved during prediction: "
+                        f"{memory.format_bytes(stats.cuda_max_reserved_bytes)}"
+                    )
 
         if results.empty:
             warnings.warn("No predictions made, returning None", stacklevel=2)

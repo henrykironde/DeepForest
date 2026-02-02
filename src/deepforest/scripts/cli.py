@@ -24,6 +24,7 @@ def predict(
     input_path: str,
     output_path: str | None = None,
     plot: bool | None = False,
+    profile_memory: bool = False,
 ) -> None:
     """Run prediction for the given image, optionally saving the results to the
     provided path and optionally visualizing the results.
@@ -33,6 +34,7 @@ def predict(
         input_path (str): Path to the input image.
         output_path (Optional[str]): Path to save the prediction results.
         plot (Optional[bool]): Whether to plot the results.
+        profile_memory (bool): Print memory before load and peak during prediction.
 
     Returns:
         None
@@ -43,6 +45,7 @@ def predict(
         patch_size=config.patch_size,
         patch_overlap=config.patch_overlap,
         iou_threshold=config.nms_thresh,
+        profile_memory=profile_memory,
     )
 
     if output_path is not None:
@@ -78,6 +81,11 @@ def main():
     predict_parser.add_argument("input", help="Path to input raster")
     predict_parser.add_argument("-o", "--output", help="Path to prediction results")
     predict_parser.add_argument("--plot", action="store_true", help="Plot results")
+    predict_parser.add_argument(
+        "--profile-memory",
+        action="store_true",
+        help="Print available RAM before image load and peak memory during prediction",
+    )
 
     # Show config subcommand
     subparsers.add_parser("config", help="Show the current config")
@@ -100,7 +108,13 @@ def main():
     cfg = OmegaConf.merge(base, cfg)
 
     if args.command == "predict":
-        predict(cfg, input_path=args.input, output_path=args.output, plot=args.plot)
+        predict(
+            cfg,
+            input_path=args.input,
+            output_path=args.output,
+            plot=args.plot,
+            profile_memory=args.profile_memory,
+        )
     elif args.command == "train":
         train(cfg)
     elif args.command == "config":
