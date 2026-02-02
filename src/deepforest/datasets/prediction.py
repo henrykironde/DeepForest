@@ -15,14 +15,30 @@ from deepforest import preprocess
 from deepforest.utilities import format_geometry, read_file
 
 
-def _ensure_rgb_chw_float32(image: np.ndarray) -> np.ndarray:
-    """Normalize an image into RGB CHW float32 in [0, 1].
+def _load_image_array(
+    image_path: str | None = None, image: np.ndarray | Image.Image | None = None
+) -> np.ndarray:
+    """Load an image into a numpy array.
+
+    - If `image` is provided, returns it as a numpy array (no color conversion).
+    - If `image` is None, loads from `image_path` and converts to RGB.
+
+    This helper centralizes the shared path-vs-array logic used by prediction datasets.
+    """
+    if image is None:
+        if image_path is None:
+            raise ValueError("Either image_path or image must be provided")
+        return np.asarray(Image.open(image_path).convert("RGB"))
+
+    return image if isinstance(image, np.ndarray) else np.asarray(image)
+
+
+def _ensure_rgb_chw(image: np.ndarray) -> np.ndarray:
+    """Ensure an image is 3-channel RGB in CHW order without normalization.
 
     Supported inputs:
-    - HWC uint8 RGB
-    - CHW uint8 RGB
-    - HWC float RGB in [0, 1] or [0, 255]
-    - CHW float RGB in [0, 1] or [0, 255]
+    - HWC RGB (any dtype)
+    - CHW RGB (any dtype)
 
     Raises:
         ValueError: if grayscale, unexpected dimensions, non-3-channel.
@@ -39,6 +55,23 @@ def _ensure_rgb_chw_float32(image: np.ndarray) -> np.ndarray:
         chw = np.moveaxis(image, -1, 0)
     else:
         raise ValueError(f"Expected image with 3 channels, got shape {image.shape}")
+
+    return np.ascontiguousarray(chw)
+
+
+def _ensure_rgb_chw_float32(image: np.ndarray) -> np.ndarray:
+    """Normalize an image into RGB CHW float32 in [0, 1].
+
+    Supported inputs:
+    - HWC uint8 RGB
+    - CHW uint8 RGB
+    - HWC float RGB in [0, 1] or [0, 255]
+    - CHW float RGB in [0, 1] or [0, 255]
+
+    Raises:
+        ValueError: if grayscale, unexpected dimensions, non-3-channel.
+    """
+    chw = _ensure_rgb_chw(image)
 
     # Normalize based primarily on dtype
     if chw.dtype == np.uint8:
@@ -104,13 +137,7 @@ class PredictionDataset(Dataset):
     def load_and_preprocess_image(
         self, image_path: str = None, image: np.ndarray | Image.Image = None
     ):
-        if image is None:
-            if image_path is None:
-                raise ValueError("Either image_path or image must be provided")
-            image_arr = np.asarray(Image.open(image_path).convert("RGB"))
-        else:
-            image_arr = image if isinstance(image, np.ndarray) else np.asarray(image)
-
+        image_arr = _load_image_array(image_path=image_path, image=image)
         image_arr = _ensure_rgb_chw_float32(image_arr)
         return torch.from_numpy(image_arr)
 
@@ -208,23 +235,8 @@ class SingleImage(PredictionDataset):
         )
 
     def prepare_items(self):
-        if self.image is None:
-            if self.path is None:
-                raise ValueError("Either image_path or image must be provided")
-            image = np.asarray(Image.open(self.path).convert("RGB"))
-        else:
-            image = (
-                self.image
-                if isinstance(self.image, np.ndarray)
-                else np.asarray(self.image)
-            )
-
-        if image.shape[0] != 3:
-            if image.shape[-1] != 3:
-                raise ValueError(
-                    f"Expected 3 channel image, got image shape {image.shape}"
-                )
-            image = np.moveaxis(image, -1, 0)
+        image_arr = _load_image_array(image_path=self.path, image=self.image)
+        image = _ensure_rgb_chw(image_arr)
 
         # Keep as uint8/float in CHW; normalize per-crop to avoid full-image float copy
         self.image = image
