@@ -19,6 +19,7 @@ from torchmetrics.detection import IntersectionOverUnion, MeanAveragePrecision
 from deepforest import evaluate as evaluate_iou
 from deepforest import predict, utilities
 from deepforest.datasets import prediction, training
+from deepforest.utils.resource_tracker import timed_call, tracker_from_env
 
 
 class deepforest(pl.LightningModule):
@@ -97,6 +98,9 @@ class deepforest(pl.LightningModule):
         self.save_hyperparameters(
             {"config": OmegaConf.to_container(self.config, resolve=True)}
         )
+
+        # Optional benchmark logger (enabled via env var)
+        self._resource_tracker = tracker_from_env()
 
     def load_model(self, model_name=None, revision=None):
         """Loads a model that has already been pretrained for a specific task,
@@ -892,8 +896,40 @@ class deepforest(pl.LightningModule):
             images = batch
 
         self.model.eval()
+
+        if self._resource_tracker is None:
+            with torch.no_grad():
+                return self.model.forward(images)
+
+        tracker = self._resource_tracker
+        tracker.reset_gpu_peaks()
+        before = tracker.snapshot()
+
         with torch.no_grad():
-            preds = self.model.forward(images)
+            preds, inf_s = timed_call(self.model.forward, images)
+
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+
+        after = tracker.snapshot()
+
+        payload: dict[str, object] = {
+            "stage": "predict_step",
+            "batch_idx": batch_idx,
+            "batch_size": len(images) if hasattr(images, "__len__") else 1,
+            "inf_s": round(inf_s, 6),
+            "cpu_rss_before_mb": round(before.rss_mb, 1),
+            "cpu_rss_after_mb": round(after.rss_mb, 1),
+        }
+
+        for i, v in after.gpu_allocated_mb.items():
+            payload[f"gpu_{i}_allocated_mb"] = round(v, 1)
+        for i, v in after.gpu_reserved_mb.items():
+            payload[f"gpu_{i}_reserved_mb"] = round(v, 1)
+        for i, v in after.gpu_max_allocated_mb.items():
+            payload[f"gpu_{i}_max_allocated_mb"] = round(v, 1)
+
+        tracker.log(payload)
         return preds
 
     def predict_batch(self, images, preprocess_fn=None):
