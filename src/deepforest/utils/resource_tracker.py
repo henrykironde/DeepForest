@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import csv
 import os
 import time
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 
@@ -58,13 +60,60 @@ class ResourceTracker:
         for i in range(torch.cuda.device_count()):
             torch.cuda.reset_peak_memory_stats(i)
 
+    def _read_csv_rows(self) -> tuple[list[str], list[dict[str, str]]]:
+        if not os.path.exists(self.log_file):
+            return [], []
+
+        with open(self.log_file, encoding="utf-8", newline="") as f:
+            reader = csv.DictReader(f)
+            if reader.fieldnames is None:
+                return [], []
+            rows = [dict(row) for row in reader]
+            return list(reader.fieldnames), rows
+
+    def _write_csv_rows(
+        self, fieldnames: list[str], rows: Iterable[dict[str, object]]
+    ) -> None:
+        os.makedirs(os.path.dirname(self.log_file) or ".", exist_ok=True)
+        with open(self.log_file, "w", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(f, fieldnames=fieldnames, extrasaction="ignore")
+            writer.writeheader()
+            for row in rows:
+                writer.writerow({k: row.get(k, "") for k in fieldnames})
+
     def log(self, payload: dict) -> None:
         payload = dict(payload)
         payload["timestamp"] = datetime.now(UTC).isoformat()
 
-        line = ",".join(f"{k}={v}" for k, v in payload.items())
-        with open(self.log_file, "a", encoding="utf-8") as f:
-            f.write(line + "\n")
+        existing_fieldnames, existing_rows = self._read_csv_rows()
+        new_keys = list(payload.keys())
+
+        if not existing_fieldnames:
+            # Stable ordering: timestamp first, then stage/batch_idx if present, then the rest.
+            preferred = ["timestamp", "stage", "batch_idx"]
+            fieldnames = []
+            for k in preferred:
+                if k in payload and k not in fieldnames:
+                    fieldnames.append(k)
+            for k in sorted(new_keys):
+                if k not in fieldnames:
+                    fieldnames.append(k)
+            self._write_csv_rows(fieldnames, [payload])
+            return
+
+        # If new keys appear later (e.g., different GPU visibility), expand header by rewriting file.
+        missing_in_header = [k for k in new_keys if k not in existing_fieldnames]
+        if missing_in_header:
+            fieldnames = list(existing_fieldnames) + missing_in_header
+            self._write_csv_rows(fieldnames, [*existing_rows, payload])
+            return
+
+        # Fast append path: header already contains all keys
+        with open(self.log_file, "a", encoding="utf-8", newline="") as f:
+            writer = csv.DictWriter(
+                f, fieldnames=existing_fieldnames, extrasaction="ignore"
+            )
+            writer.writerow({k: payload.get(k, "") for k in existing_fieldnames})
 
 
 def tracker_from_env() -> ResourceTracker | None:
