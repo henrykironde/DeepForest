@@ -232,6 +232,26 @@ class deepforest(pl.LightningModule):
 
         self.trainer = pl.Trainer(**trainer_args)
 
+        # Helpful warning: CUDA visible but trainer not using it.
+        # This commonly happens if accelerator/devices were overridden to CPU, or
+        # if the trainer wasn't recreated after changing config.
+        try:
+            accel_name = type(self.trainer.accelerator).__name__.lower()
+        except Exception:
+            accel_name = ""
+
+        requested_accel = str(trainer_args.get("accelerator", "")).lower()
+        if torch.cuda.is_available() and requested_accel in {"auto", "gpu", "cuda"}:
+            if "cuda" not in accel_name and "gpu" not in accel_name:
+                warnings.warn(
+                    "CUDA appears to be available, but the Lightning trainer is not "
+                    f"using a GPU accelerator (accelerator={trainer_args.get('accelerator')}, "
+                    f"devices={trainer_args.get('devices')}). "
+                    "To force GPU inference, call create_trainer(accelerator='gpu', devices=1) "
+                    "or set config.accelerator='gpu' and config.devices=1, then recreate the trainer.",
+                    stacklevel=2,
+                )
+
     def on_fit_start(self):
         if self.config.train.csv_file is None:
             raise AttributeError(
@@ -920,7 +940,15 @@ class deepforest(pl.LightningModule):
             "inf_s": round(inf_s, 6),
             "cpu_rss_before_mb": round(before.rss_mb, 1),
             "cpu_rss_after_mb": round(after.rss_mb, 1),
+            "pl_device": str(getattr(self, "device", "unknown")),
+            "cuda_available": bool(torch.cuda.is_available()),
         }
+
+        # Add trainer accelerator info when available
+        try:
+            payload["trainer_accelerator"] = type(self.trainer.accelerator).__name__
+        except Exception:
+            payload["trainer_accelerator"] = "unknown"
 
         for i, v in after.gpu_allocated_mb.items():
             payload[f"gpu_{i}_allocated_mb"] = round(v, 1)
