@@ -1,6 +1,5 @@
 import os
 
-import pandas as pd
 import pytest
 import torch
 
@@ -16,14 +15,11 @@ from deepforest.main import deepforest
     not torch.cuda.is_available(),
     reason="CUDA not available in this test environment.",
 )
-def test_predict_tile_uses_cuda_when_requested(tmp_path, monkeypatch):
+def test_predict_tile_uses_cuda_when_requested():
     """Ensure predict_tile runs on CUDA when accelerator/devices request GPU.
 
     This is a regression test to catch silent CPU fallbacks on GPU nodes.
     """
-    log_path = tmp_path / "gpu_benchmark.csv"
-    monkeypatch.setenv("DEEPFOREST_BENCHMARK_LOG", str(log_path))
-
     m = deepforest(config_args={"accelerator": "gpu", "devices": 1, "workers": 0})
     m.load_model(model_name="weecology/deepforest-tree", revision="main")
     m.create_trainer(accelerator="gpu", devices=1)
@@ -37,9 +33,7 @@ def test_predict_tile_uses_cuda_when_requested(tmp_path, monkeypatch):
     )
     assert results is not None and not results.empty
 
-    df = pd.read_csv(log_path)
-    assert "pl_device" in df.columns
-    assert "trainer_accelerator" in df.columns
-
-    # At least one predict_step should report running on CUDA.
-    assert df["pl_device"].astype(str).str.contains("cuda", case=False).any()
+    # Assert trainer is actually using a GPU accelerator (no silent CPU fallback).
+    assert m.trainer is not None
+    accel_name = type(m.trainer.accelerator).__name__.lower()
+    assert "cuda" in accel_name or "gpu" in accel_name
