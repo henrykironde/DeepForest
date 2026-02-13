@@ -48,6 +48,8 @@ def main() -> int:
     train_csv = get_data("example.csv")
     m.config.train.csv_file = train_csv
     m.config.train.root_dir = os.path.dirname(train_csv)
+    m.config.validation.csv_file = train_csv
+    m.config.validation.root_dir = os.path.dirname(train_csv)
     m.create_model(initialize_model=True)
 
     # Keep this fast but avoid fast_dev_run's zero-length warning in DDP.
@@ -64,8 +66,6 @@ def main() -> int:
     m.trainer.fit(m)
 
     # Multi-GPU evaluation pass (uses same example.csv)
-    m.config.validation.csv_file = train_csv
-    m.config.validation.root_dir = os.path.dirname(train_csv)
     m.trainer.validate(m)
     return 0
 
