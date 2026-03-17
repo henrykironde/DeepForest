@@ -20,6 +20,7 @@ def load_config(
     config_name: str = "config.yaml",
     overrides: DictConfig | dict | None = None,
     strict: bool = False,
+    config_dir: str | None = None,
 ) -> DictConfig:
     """Loads the DeepForest structured config, merges with YAML and overrides.
 
@@ -27,14 +28,19 @@ def load_config(
     it's assumed to be a named config in the deepforest package. The loaded
     config will be validated against the schema.
 
+    When config_dir is provided, config_name is resolved relative to it first.
+    This ensures the correct config is loaded regardless of the current working
+    directory (e.g. when run via Snakemake or other job schedulers).
+
     You can load a config in strict mode, which will not allow any additional keys.
     This may be useful for debugging, but it may cause issues due to the way OmegaConf
     handles dictionary config items, like label_dict.
 
     Args:
-        config_name (str): Path to config file
+        config_name (str): Path to config file (absolute, or relative to CWD/config_dir)
         overrides (DictConfig or dict): Overrides to config
         strict (bool): If True, disallows unexpected keys.
+        config_dir (str | None): If provided, resolve config_name relative to this dir.
 
     Returns:
         config (DictConfig): composed configuration
@@ -46,8 +52,20 @@ def load_config(
     if overrides is None:
         overrides = {}
 
-    if os.path.exists(config_name):
+    # Resolve path: config_dir ensures correct config is found regardless of CWD
+    if config_dir is not None:
+        candidate = os.path.abspath(os.path.join(config_dir, config_name))
+        if os.path.exists(candidate):
+            yaml_path = candidate
+        elif os.path.isabs(config_name) and os.path.exists(config_name):
+            yaml_path = config_name
+        else:
+            yaml_path = candidate
+    else:
         yaml_path = config_name
+
+    if os.path.exists(yaml_path):
+        yaml_path = os.path.abspath(yaml_path)
     else:
         config_root = os.path.abspath(os.path.join(_ROOT, "conf"))
         yaml_path = os.path.join(config_root, config_name)
@@ -75,15 +93,19 @@ def load_config(
     # Merge in sequence (base, derived config, overrides)
     config = OmegaConf.merge(base, yaml_cfg, overrides)
 
-    # This hack is necessary because OmegaConf will merge rather than
-    # replace label_dict by default.
-    yaml_cfg_label_dict = yaml_cfg.get("label_dict", None)  # type: ignore
-    if yaml_cfg_label_dict:
-        config.label_dict = yaml_cfg_label_dict
+    # OmegaConf.merge recursively merges dicts, which can combine label_dict from
+    # base (e.g. Tree: 0 from schema/defaults) with the user's config. For
+    # model-specific label_dict, we must REPLACE entirely, not merge.
+    # Priority: overrides > yaml_cfg > (keep merge result)
+    label_dict = None
+    if overrides and (override_ld := overrides.get("label_dict", None)):
+        label_dict = override_ld
+    elif yaml_cfg and (yaml_ld := yaml_cfg.get("label_dict", None)):
+        label_dict = yaml_ld
 
-    override_label_dict = overrides.get("label_dict", None)
-    if override_label_dict:
-        config.label_dict = override_label_dict
+    if label_dict is not None:
+        # Use OmegaConf.create to avoid inheriting merge structure
+        config.label_dict = OmegaConf.create(dict(OmegaConf.to_container(label_dict)))
 
     return config
 

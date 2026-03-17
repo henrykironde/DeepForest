@@ -45,9 +45,15 @@ class deepforest(pl.LightningModule):
 
         if config is None:
             config = utilities.load_config(overrides=config_args)
-        # Default/string config name
+        # Default/string config name or path
         elif isinstance(config, str):
-            config = utilities.load_config(config_name=config, overrides=config_args)
+            _args = dict(config_args or {})
+            _config_dir = _args.pop("config_dir", None)
+            config = utilities.load_config(
+                config_name=config,
+                overrides=_args,
+                config_dir=_config_dir,
+            )
         # Checkpoint load
         elif isinstance(config, dict):
             config = OmegaConf.merge(config, config_args or {})
