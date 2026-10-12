@@ -96,6 +96,9 @@ train:
     preload_images: False
     # Validate that annotation coordinates fall within image bounds before training.
     validate_coordinates: True
+    # When true, each photo is cut into patch_size windows (patch_overlap) before the
+    # model sees it. Leave false to pass each photo through whole.
+    tile_images: false
 
 
 validation:
@@ -103,6 +106,7 @@ validation:
     root_dir:
     preload_images: False
     validate_coordinates: True
+    tile_images: false
     size:
 
     # For retinanet you may prefer val_classification, but the default val_loss

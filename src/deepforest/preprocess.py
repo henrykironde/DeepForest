@@ -60,6 +60,59 @@ def compute_windows(numpy_image, patch_size, patch_overlap):
     return windows
 
 
+def window_starts(length: int, patch_size: int, patch_overlap: float) -> list[int]:
+    """Pixel origins for one axis of a sliding window.
+
+    The last window is aligned to the far edge so a bird there is not
+    dropped.
+    """
+    if patch_size < 1:
+        raise ValueError(f"patch_size must be positive, got {patch_size}")
+    if not 0 <= patch_overlap < 1:
+        raise ValueError(f"patch_overlap must be in [0, 1), got {patch_overlap}")
+    if length <= patch_size:
+        return [0]
+    step = max(int(patch_size * (1.0 - patch_overlap)), 1)
+    last = length - patch_size
+    starts = list(range(0, last + 1, step))
+    if starts[-1] != last:
+        starts.append(last)
+    return starts
+
+
+def clip_boxes_to_window(
+    boxes: np.ndarray,
+    labels: np.ndarray,
+    x0: int,
+    y0: int,
+    width: int,
+    height: int,
+    min_fraction: float = 0.5,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Keep boxes that still cover more than ``min_fraction`` of their area.
+
+    Returned boxes are shifted so the window's top-left corner is (0,
+    0).
+    """
+    boxes = np.asarray(boxes, dtype=np.float32)
+    labels = np.asarray(labels)
+    if len(boxes) == 0:
+        return np.zeros((0, 4), dtype=np.float32), labels[:0]
+
+    x1 = np.clip(boxes[:, 0], x0, x0 + width)
+    y1 = np.clip(boxes[:, 1], y0, y0 + height)
+    x2 = np.clip(boxes[:, 2], x0, x0 + width)
+    y2 = np.clip(boxes[:, 3], y0, y0 + height)
+    orig_area = np.maximum(boxes[:, 2] - boxes[:, 0], 0) * np.maximum(
+        boxes[:, 3] - boxes[:, 1], 0
+    )
+    new_area = np.maximum(x2 - x1, 0) * np.maximum(y2 - y1, 0)
+    keep = orig_area > 0
+    keep &= (new_area / np.maximum(orig_area, 1e-6)) > min_fraction
+    clipped = np.stack([x1 - x0, y1 - y0, x2 - x0, y2 - y0], axis=1)
+    return clipped[keep].astype(np.float32), labels[keep]
+
+
 def select_annotations(annotations, window):
     """Select annotations that overlap with selected image crop.
 

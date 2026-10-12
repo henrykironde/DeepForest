@@ -344,3 +344,23 @@ def test_split_raster_from_shp(tmp_path):
                                                 patch_size=300)
 
     assert not split_annotations.empty
+
+
+def test_window_starts_cover_the_far_edge():
+    starts = preprocess.window_starts(1500, 800, 0.2)
+    assert starts[0] == 0
+    assert starts[-1] == 700
+    assert all(start + 800 <= 1500 for start in starts)
+
+
+def test_clip_boxes_to_window_keeps_a_bird_and_shifts_it():
+    boxes = np.array([[10, 20, 40, 50]], dtype=np.float32)
+    labels = np.array([0])
+    clipped, kept = preprocess.clip_boxes_to_window(boxes, labels, 0, 0, 80, 80)
+    assert kept.tolist() == [0]
+    assert clipped.tolist() == [[10, 20, 40, 50]]
+
+    # Only a sliver of the box sits in this window, so it is dropped.
+    clipped, kept = preprocess.clip_boxes_to_window(boxes, labels, 35, 0, 80, 80)
+    assert len(clipped) == 0
+    assert len(kept) == 0

@@ -373,6 +373,8 @@ class deepforest(pl.LightningModule):
         preload_images=False,
         validate_coordinates=True,
         batch_size=1,
+        patch_size=None,
+        patch_overlap=0.0,
     ):
         """Create a dataset for inference or training.
 
@@ -401,7 +403,11 @@ class deepforest(pl.LightningModule):
                 augmentations=augmentations,
                 preload_images=preload_images,
                 validate_coordinates=validate_coordinates,
+                patch_size=patch_size,
+                patch_overlap=patch_overlap,
             )
+        elif patch_size is not None:
+            raise ValueError("tile_images is only supported for box models")
         elif self.model.task == "point":
             ds = training.PointDataset(
                 csv_file=csv_file,
@@ -451,6 +457,7 @@ class deepforest(pl.LightningModule):
         if self.existing_train_dataloader:
             return self.existing_train_dataloader
 
+        tile_images = bool(getattr(self.config.train, "tile_images", False))
         loader = self.load_dataset(
             csv_file=self.config.train.csv_file,
             root_dir=self.config.train.root_dir,
@@ -460,6 +467,8 @@ class deepforest(pl.LightningModule):
             shuffle=True,
             transforms=self.transforms,
             batch_size=self.config.batch_size,
+            patch_size=int(self.config.patch_size) if tile_images else None,
+            patch_overlap=float(self.config.patch_overlap) if tile_images else 0.0,
         )
 
         return loader
@@ -478,6 +487,7 @@ class deepforest(pl.LightningModule):
             return self.existing_val_dataloader
 
         if self.config.validation.csv_file is not None:
+            tile_images = bool(getattr(self.config.validation, "tile_images", False))
             loader = self.load_dataset(
                 csv_file=self.config.validation.csv_file,
                 root_dir=self.config.validation.root_dir,
@@ -486,6 +496,8 @@ class deepforest(pl.LightningModule):
                 preload_images=self.config.validation.preload_images,
                 validate_coordinates=self.config.validation.validate_coordinates,
                 batch_size=self.config.batch_size,
+                patch_size=int(self.config.patch_size) if tile_images else None,
+                patch_overlap=float(self.config.patch_overlap) if tile_images else 0.0,
             )
 
         return loader

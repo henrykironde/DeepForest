@@ -18,6 +18,7 @@ from torchvision.datasets import ImageFolder
 
 from deepforest import utilities
 from deepforest.augmentations import get_transform
+from deepforest.preprocess import clip_boxes_to_window, window_starts
 
 
 class TrainingDataset(Dataset):
@@ -33,6 +34,9 @@ class TrainingDataset(Dataset):
         label_dict=None,
         preload_images=False,
         validate_coordinates=True,
+        patch_size=None,
+        patch_overlap=0.0,
+        min_box_fraction=0.5,
     ):
         """
         Args:
@@ -44,6 +48,11 @@ class TrainingDataset(Dataset):
             preload_images (bool): If True, preload all images into memory. Defaults to False.
             validate_coordinates (bool): If True, check that all annotation coordinates fall
                 within image bounds before training. Defaults to True.
+            patch_size (int | None): When set, each photo is cut into windows of this
+                size so the model sees birds near their real pixel size.
+            patch_overlap (float): Fraction of overlap between those windows.
+            min_box_fraction (float): Drop a box when the window keeps this fraction
+                of its area or less.
         """
         self.annotations = utilities.read_file(csv_file, root_dir=root_dir)
         self.root_dir = root_dir
@@ -70,6 +79,17 @@ class TrainingDataset(Dataset):
         self._validate_labels()
         if validate_coordinates:
             self._validate_coordinates()
+
+        self.patch_size = patch_size
+        self.patch_overlap = patch_overlap
+        self.min_box_fraction = min_box_fraction
+        self.windows = None
+        if patch_size is not None:
+            self.windows = self._build_windows()
+            print(
+                f"Tiled {len(self.image_names)} images into {len(self.windows)} "
+                f"windows of {patch_size}px (overlap {patch_overlap})"
+            )
 
         # Pin data to memory if desired
         if self.preload_images:
@@ -137,6 +157,56 @@ class TrainingDataset(Dataset):
 
 class BoxDataset(TrainingDataset):
     """Dataset for object detection with bounding boxes."""
+
+    def __len__(self) -> int:
+        if self.windows is not None:
+            return len(self.windows)
+        return len(self.image_names)
+
+    def _build_windows(self) -> list[tuple]:
+        """One window per training sample: (image index, x, y, w, h, name)."""
+        windows = []
+        for image_idx, image_name in enumerate(self.image_names):
+            img_path = os.path.join(self.root_dir, image_name)
+            with Image.open(img_path) as img:
+                width, height = img.size
+            targets = self.annotations_for_path(image_name)
+            boxes = targets["boxes"]
+            labels = targets["labels"]
+            if len(boxes) == 0:
+                areas = np.zeros(0)
+            else:
+                areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+            if not np.any(areas > 0):
+                # Empty frame: one sample, not a grid of blank windows.
+                windows.append((image_idx, 0, 0, width, height, str(image_name)))
+                continue
+            if width <= self.patch_size and height <= self.patch_size:
+                windows.append((image_idx, 0, 0, width, height, str(image_name)))
+                continue
+            for y0 in window_starts(height, self.patch_size, self.patch_overlap):
+                win_h = min(self.patch_size, height - y0)
+                for x0 in window_starts(width, self.patch_size, self.patch_overlap):
+                    win_w = min(self.patch_size, width - x0)
+                    clipped, _kept = clip_boxes_to_window(
+                        boxes,
+                        labels,
+                        x0,
+                        y0,
+                        win_w,
+                        win_h,
+                        self.min_box_fraction,
+                    )
+                    if len(clipped) == 0:
+                        continue
+                    windows.append(
+                        (image_idx, x0, y0, win_w, win_h, f"{image_name}@{x0}_{y0}")
+                    )
+        if not windows:
+            raise ValueError(
+                "Tiling produced no windows. Check patch_size against the photos."
+            )
+        return windows
 
     def _validate_coordinates(self) -> None:
         """Validate that all bounding box coordinates occur within the image.
@@ -253,16 +323,37 @@ class BoxDataset(TrainingDataset):
         return targets
 
     def __getitem__(self, idx) -> tuple:
+        if self.windows is None:
+            image_idx = idx
+            window = None
+            window_name = self.image_names[idx]
+        else:
+            image_idx, x0, y0, win_w, win_h, window_name = self.windows[idx]
+            window = (x0, y0, win_w, win_h)
+
         # Read image if not in memory
         if self.preload_images:
-            image = self.image_dict[idx]
+            image = self.image_dict[image_idx]
         else:
-            image = self.load_image(idx)
+            image = self.load_image(image_idx)
 
-        targets = self.annotations_for_path(self.image_names[idx])
+        targets = self.annotations_for_path(self.image_names[image_idx])
+        if window is not None:
+            x0, y0, win_w, win_h = window
+            boxes, labels = clip_boxes_to_window(
+                targets["boxes"],
+                targets["labels"],
+                x0,
+                y0,
+                win_w,
+                win_h,
+                self.min_box_fraction,
+            )
+            targets = {"boxes": boxes, "labels": labels}
+            image = np.ascontiguousarray(image[y0 : y0 + win_h, x0 : x0 + win_w])
 
         # If image has no annotations, add a dummy
-        if np.sum(targets["boxes"]) == 0:
+        if targets["boxes"].size == 0 or np.sum(targets["boxes"]) == 0:
             boxes = np.zeros((0, 4), dtype=np.float32)
             labels = np.zeros(0, dtype=np.int64)
             targets = {"boxes": boxes, "labels": labels}
@@ -295,7 +386,7 @@ class BoxDataset(TrainingDataset):
 
         targets = {"boxes": boxes, "labels": labels}
 
-        return image, targets, self.image_names[idx]
+        return image, targets, window_name
 
 
 class PointDataset(TrainingDataset):

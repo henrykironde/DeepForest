@@ -82,6 +82,8 @@ class TrainConfig:
     fast_dev_run: bool = False
     preload_images: bool = False
     validate_coordinates: bool = True
+    # Cut each training photo into patch_size windows so birds stay near their real size.
+    tile_images: bool = False
     augmentations: list[str] | None = field(default_factory=lambda: ["HorizontalFlip"])
 
 
@@ -100,6 +102,8 @@ class ValidationConfig:
     root_dir: str | None = None
     preload_images: bool = False
     validate_coordinates: bool = True
+    # Score quiz photos as patch_size windows, matching tiled training and predict_tile.
+    tile_images: bool = False
     size: int | None = None
     iou_threshold: float = 0.4
     val_accuracy_interval: int = 20

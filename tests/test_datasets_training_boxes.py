@@ -80,6 +80,48 @@ def test_single_class_with_empty(tmp_path):
     assert torch.sum(ds[1][1]["boxes"]) == 0
 
 
+def test_BoxDataset_tiles_large_image(tmp_path):
+    """A photo larger than patch_size is cut into overlapping windows."""
+    Image.new("RGB", (200, 100), color=(10, 20, 30)).save(tmp_path / "big.png")
+    pd.DataFrame(
+        [
+            {
+                "image_path": "big.png",
+                "xmin": 10,
+                "ymin": 10,
+                "xmax": 30,
+                "ymax": 40,
+                "label": "Bird",
+            }
+        ]
+    ).to_csv(tmp_path / "boxes.csv", index=False)
+
+    ds = BoxDataset(
+        csv_file=str(tmp_path / "boxes.csv"),
+        root_dir=str(tmp_path),
+        label_dict={"Bird": 0},
+        patch_size=80,
+        patch_overlap=0.2,
+        augmentations=[],
+    )
+    assert len(ds) > 1
+
+    saw_window_name = False
+    for index in range(len(ds)):
+        image, targets, name = ds[index]
+        assert image.shape[1] <= 80
+        assert image.shape[2] <= 80
+        boxes = targets["boxes"]
+        assert boxes.shape[0] >= 1
+        assert torch.all(boxes[:, 0] >= 0)
+        assert torch.all(boxes[:, 1] >= 0)
+        assert torch.all(boxes[:, 2] <= image.shape[2] + 1)
+        assert torch.all(boxes[:, 3] <= image.shape[1] + 1)
+        if "@" in str(name):
+            saw_window_name = True
+    assert saw_window_name
+
+
 @pytest.mark.parametrize("augment", [True, False])
 def test_BoxDataset_transform(augment):
     csv_file = get_data("example.csv")
