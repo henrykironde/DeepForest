@@ -215,6 +215,11 @@ class CropModel(LightningModule, PyTorchModelHubMixin):
             num_classes=num_classes,
         )
 
+    def freeze_backbone(self) -> None:
+        """Keep the classification backbone fixed and train the final layer."""
+        for name, parameter in self.model.named_parameters():
+            parameter.requires_grad = name.startswith("fc.")
+
     def create_trainer(self, **kwargs):
         """Create a pytorch lightning trainer object."""
         self.trainer = Trainer(**kwargs)

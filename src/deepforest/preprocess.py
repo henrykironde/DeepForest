@@ -113,6 +113,53 @@ def clip_boxes_to_window(
     return clipped[keep].astype(np.float32), labels[keep]
 
 
+def windows_for_image(
+    width: int,
+    height: int,
+    boxes: np.ndarray,
+    labels: np.ndarray,
+    patch_size: int,
+    patch_overlap: float,
+    min_box_fraction: float,
+    image_name: str,
+) -> list[tuple[int, int, int, int, str]]:
+    """List the windows of one photo that training should keep.
+
+    Empty frames stay one full-image sample. Photos that already fit in
+    one patch stay one sample. Larger photos are cut on the same grid as
+    ``window_starts``, and a window is kept only when at least one box
+    still covers more than ``min_box_fraction`` of its area.
+    """
+    boxes = np.asarray(boxes, dtype=np.float32)
+    if len(boxes) == 0:
+        areas = np.zeros(0)
+    else:
+        areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
+    if not np.any(areas > 0) or (width <= patch_size and height <= patch_size):
+        return [(0, 0, int(width), int(height), str(image_name))]
+
+    kept_windows = []
+    for y0 in window_starts(height, patch_size, patch_overlap):
+        win_h = min(patch_size, height - y0)
+        for x0 in window_starts(width, patch_size, patch_overlap):
+            win_w = min(patch_size, width - x0)
+            kept, _ = clip_boxes_to_window(
+                boxes,
+                labels,
+                x0,
+                y0,
+                win_w,
+                win_h,
+                min_box_fraction,
+            )
+            if len(kept) == 0:
+                continue
+            kept_windows.append(
+                (int(x0), int(y0), int(win_w), int(win_h), f"{image_name}@{x0}_{y0}")
+            )
+    return kept_windows
+
+
 def select_annotations(annotations, window):
     """Select annotations that overlap with selected image crop.
 

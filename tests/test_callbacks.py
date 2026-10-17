@@ -3,7 +3,10 @@ import glob
 import os
 from unittest.mock import MagicMock, Mock
 
+import pandas as pd
 import pytest
+import shapely
+from PIL import Image
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.loggers.logger import DummyLogger
 
@@ -183,6 +186,58 @@ def test_log_image_empty_annotations(m, tmp_path):
     assert os.path.exists(os.path.join(tmp_path, "validation_sample"))
     val_images = list((tmp_path / "validation_sample").glob("*"))
     assert len(val_images) == 1
+
+def test_log_predictions_opens_the_photo_not_the_window_name(tmp_path):
+    """A quiz sample named photo@x_y is a crop, not a file."""
+    Image.new("RGB", (200, 100), color=(10, 20, 30)).save(tmp_path / "big.png")
+    pd.DataFrame(
+        [
+            {
+                "image_path": "big.png",
+                "xmin": 10,
+                "ymin": 10,
+                "xmax": 30,
+                "ymax": 40,
+                "label": "Bird",
+            }
+        ]
+    ).to_csv(tmp_path / "boxes.csv", index=False)
+    dataset = BoxDataset(
+        csv_file=str(tmp_path / "boxes.csv"),
+        root_dir=str(tmp_path),
+        label_dict={"Bird": 0},
+        patch_size=80,
+        patch_overlap=0.2,
+        augmentations=[],
+    )
+    window_name = next(name for *_, name in dataset.windows if "@" in str(name))
+    _image_path, x0, y0, win_w, win_h = dataset.window_record(window_name)
+    box = shapely.geometry.box(1, 1, 10, 10)
+    predictions = pd.DataFrame(
+        {
+            "image_path": [window_name],
+            "label": [0],
+            "score": [0.9],
+            "geometry": [box],
+        }
+    )
+    trainer = Mock()
+    trainer.global_step = 3
+    trainer.loggers = []
+    trainer.val_dataloaders.dataset = dataset
+    pl_module = Mock()
+    pl_module.predictions = [predictions]
+
+    im_callback = callbacks.ImagesCallback(
+        save_dir=tmp_path, every_n_epochs=1, prediction_samples=1
+    )
+    im_callback._log_last_predictions(trainer, pl_module)
+
+    saved = tmp_path / "predictions" / f"big_{x0}_{y0}_3.png"
+    assert saved.exists()
+    with Image.open(saved) as picture:
+        assert picture.size == (win_w, win_h)
+
 
 def test_create_checkpoint(m, tmp_path):
     """Test checkpoint creation"""

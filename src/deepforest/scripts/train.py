@@ -81,11 +81,14 @@ def train(
         try:
             from pytorch_lightning.loggers import CometLogger
 
+            experiment_key = os.environ.get("COMET_EXPERIMENT_KEY") or None
             comet_logger = CometLogger(
                 api_key=os.environ.get("COMET_API_KEY"),
                 workspace=os.environ.get("COMET_WORKSPACE"),
                 project=os.environ.get("COMET_PROJECT", default="DeepForest"),
                 experiment_name=experiment_name,
+                experiment_key=experiment_key,
+                mode="get" if experiment_key else None,
                 offline_directory=config.log_root,
             )
 
@@ -163,6 +166,13 @@ def train(
         os.makedirs(csv_logger.log_dir, exist_ok=True)
         OmegaConf.save(config, Path(csv_logger.log_dir) / "config.yaml")
 
+    init_weights = os.environ.get("INIT_WEIGHTS")
+    if init_weights and not resume:
+        checkpoint_data = torch.load(init_weights, map_location="cpu", weights_only=False)
+        state = checkpoint_data["state_dict"]
+        m.load_state_dict(state)
+        print(f"Loaded weights from {init_weights}")
+
     train_success = False
     try:
         m.trainer.fit(m, ckpt_path=resume)
@@ -173,6 +183,16 @@ def train(
             stacklevel=2,
         )
         warnings.warn(traceback.format_exc(), stacklevel=2)
+
+    if (
+        train_success
+        and os.environ.get("SAVE_FINAL")
+        and checkpoint
+        and distributed.is_global_zero(m.trainer)
+    ):
+        final_path = Path(checkpoint_callback.dirpath) / "final.ckpt"
+        m.trainer.save_checkpoint(str(final_path))
+        print(f"Saved final weights to {final_path}")
 
     if trace and torch.cuda.is_available() and distributed.is_global_zero(m.trainer):
         torch.cuda.memory._dump_snapshot(

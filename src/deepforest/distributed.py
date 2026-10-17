@@ -6,6 +6,7 @@ from collections.abc import Iterator
 from typing import Any
 
 import pandas as pd
+import torch
 import torch.distributed as dist
 from torch.utils.data import Sampler
 
@@ -13,6 +14,57 @@ from torch.utils.data import Sampler
 def is_distributed() -> bool:
     """Return True when torch.distributed is initialized."""
     return dist.is_available() and dist.is_initialized()
+
+
+def any_across_ranks(flag: bool, device: torch.device | None = None) -> bool:
+    """Return True if *flag* is true on any rank; *flag* when not
+    distributed."""
+    if not is_distributed():
+        return bool(flag)
+
+    value = torch.tensor(
+        [1 if flag else 0],
+        device=device if device is not None else torch.device("cpu"),
+        dtype=torch.int64,
+    )
+    dist.all_reduce(value, op=dist.ReduceOp.MAX)
+    return bool(value.item())
+
+
+def sum_across_ranks(value: int, device: torch.device | None = None) -> int:
+    """Sum an integer across ranks; return *value* when not distributed."""
+    if not is_distributed():
+        return int(value)
+
+    tensor = torch.tensor(
+        [int(value)],
+        device=device if device is not None else torch.device("cpu"),
+        dtype=torch.int64,
+    )
+    dist.all_reduce(tensor, op=dist.ReduceOp.SUM)
+    return int(tensor.item())
+
+
+def mean_metric_dicts(dicts: list[dict[str, Any]]) -> dict[str, Any]:
+    """Element-wise mean of metric dicts; skips non-tensor entries like
+    classes."""
+    if not dicts:
+        return {}
+    if len(dicts) == 1:
+        return dict(dicts[0])
+
+    merged: dict[str, Any] = {}
+    for key in dicts[0]:
+        if key == "classes":
+            continue
+        values = [metric_dict[key] for metric_dict in dicts if key in metric_dict]
+        if not values:
+            continue
+        if isinstance(values[0], torch.Tensor):
+            merged[key] = torch.stack([value.float() for value in values]).mean(dim=0)
+        else:
+            merged[key] = values[0]
+    return merged
 
 
 def is_global_zero(trainer: Any | None = None) -> bool:
@@ -72,6 +124,38 @@ def gather_object(obj: Any) -> list[Any]:
     gathered = [None] * get_world_size()
     dist.all_gather_object(gathered, obj)
     return gathered
+
+
+def compute_metric_across_ranks(metric: Any) -> dict[str, Any]:
+    """Compute a detection metric when ranks saw different numbers of crops.
+
+    TorchMetrics stores one tensor per crop and gathers those tensors
+    one at a time. A rank that skipped an empty crop sends fewer tensors
+    than a rank that did not, and the gather does not finish. Gather
+    each whole list once, then compute from the combined crops.
+    """
+    if not is_distributed():
+        return metric.compute()
+
+    sync_was = metric._to_sync
+    metric._to_sync = False
+    saw_crops = False
+    try:
+        for name in list(metric._reductions):
+            value = getattr(metric, name)
+            if not isinstance(value, list):
+                continue
+            gathered = gather_object(value)
+            flat = [item for part in gathered for item in part]
+            setattr(metric, name, flat)
+            saw_crops = saw_crops or bool(flat)
+        if not saw_crops:
+            return {}
+        if metric._update_count == 0:
+            metric._update_count = 1
+        return metric.compute()
+    finally:
+        metric._to_sync = sync_was
 
 
 def gather_dataframe(frame: pd.DataFrame) -> pd.DataFrame:

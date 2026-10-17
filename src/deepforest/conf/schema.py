@@ -84,6 +84,12 @@ class TrainConfig:
     validate_coordinates: bool = True
     # Cut each training photo into patch_size windows so birds stay near their real size.
     tile_images: bool = False
+    # CSV of windows built on CPU. When set, the GPU job does not scan photos at start.
+    window_cache: str | None = None
+    # Train the detection head and leave the backbone weights fixed.
+    freeze_backbone: bool = False
+    # Freeze the early ResNet stages and train layer4, the pyramid, and the head.
+    unfreeze_last_stage: bool = False
     augmentations: list[str] | None = field(default_factory=lambda: ["HorizontalFlip"])
 
 
@@ -104,6 +110,7 @@ class ValidationConfig:
     validate_coordinates: bool = True
     # Score quiz photos as patch_size windows, matching tiled training and predict_tile.
     tile_images: bool = False
+    window_cache: str | None = None
     size: int | None = None
     iou_threshold: float = 0.4
     val_accuracy_interval: int = 20

@@ -122,6 +122,56 @@ def test_BoxDataset_tiles_large_image(tmp_path):
     assert saw_window_name
 
 
+def test_BoxDataset_loads_precomputed_windows(tmp_path):
+    """A window table skips opening every photo while the dataset is created."""
+    Image.new("RGB", (200, 100), color=(10, 20, 30)).save(tmp_path / "big.png")
+    pd.DataFrame(
+        [
+            {
+                "image_path": "big.png",
+                "xmin": 10,
+                "ymin": 10,
+                "xmax": 30,
+                "ymax": 40,
+                "label": "Bird",
+            }
+        ]
+    ).to_csv(tmp_path / "boxes.csv", index=False)
+    live = BoxDataset(
+        csv_file=str(tmp_path / "boxes.csv"),
+        root_dir=str(tmp_path),
+        label_dict={"Bird": 0},
+        patch_size=80,
+        patch_overlap=0.2,
+        augmentations=[],
+    )
+    pd.DataFrame(
+        [
+            {
+                "image_path": image_name,
+                "x0": x0,
+                "y0": y0,
+                "w": win_w,
+                "h": win_h,
+                "window_name": name,
+            }
+            for _idx, x0, y0, win_w, win_h, name in live.windows
+            for image_name in [live.image_names[_idx]]
+        ]
+    ).to_csv(tmp_path / "windows.csv", index=False)
+    cached = BoxDataset(
+        csv_file=str(tmp_path / "boxes.csv"),
+        root_dir=str(tmp_path),
+        label_dict={"Bird": 0},
+        patch_size=80,
+        patch_overlap=0.2,
+        augmentations=[],
+        validate_coordinates=True,
+        window_cache=str(tmp_path / "windows.csv"),
+    )
+    assert cached.windows == live.windows
+
+
 @pytest.mark.parametrize("augment", [True, False])
 def test_BoxDataset_transform(augment):
     csv_file = get_data("example.csv")

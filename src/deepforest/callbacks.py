@@ -19,6 +19,7 @@ from pytorch_lightning import Callback
 
 from deepforest import distributed, utilities, visualize
 from deepforest.datasets.training import BoxDataset
+from deepforest.preprocess import clip_boxes_to_window
 
 
 class ImagesCallback(Callback):
@@ -169,13 +170,10 @@ class ImagesCallback(Callback):
 
         for image_name in selected_images:
             pred_df = df[df.image_path == image_name]
-
-            targets = utilities.format_geometry(
-                dataset.annotations_for_path(image_name, return_tensor=True), scores=False
+            image, targets, basename = self._plot_inputs(
+                dataset, image_name, trainer.global_step
             )
 
-            # Assume that validation images are un-augmented
-            basename = Path(image_name).stem + f"_{trainer.global_step}"
             fig = visualize.plot_results(
                 basename=basename,
                 results=pred_df,
@@ -183,6 +181,7 @@ class ImagesCallback(Callback):
                 savedir=out_dir,
                 results_color=results_color,
                 thickness=self.thickness,
+                image=image,
                 show=False,
             )
             plt.close(fig)
@@ -199,7 +198,10 @@ class ImagesCallback(Callback):
                 .to_dict()
             )
 
-            metadata = {"pred_count": len(pred_df), "gt_count": len(targets)}
+            metadata = {
+                "pred_count": len(pred_df),
+                "gt_count": 0 if targets is None else len(targets),
+            }
             metadata.update(stats)
 
             with open(os.path.join(out_dir, basename + ".json"), "w") as fp:
@@ -211,6 +213,48 @@ class ImagesCallback(Callback):
                 tag="prediction sample",
                 metadata=metadata,
             )
+
+    def _plot_inputs(self, dataset, image_name: str, global_step: int):
+        """Pixels and ground truth for one quiz sample.
+
+        A tiled sample name is ``photo@x_y``. Open the photo and cut the
+        same window the model scored, so the picture matches the boxes.
+        """
+        record = None
+        if hasattr(dataset, "window_record"):
+            record = dataset.window_record(image_name)
+        if record is None:
+            targets = utilities.format_geometry(
+                dataset.annotations_for_path(image_name, return_tensor=True),
+                scores=False,
+            )
+            basename = Path(image_name).stem + f"_{global_step}"
+            return None, targets, basename
+
+        image_path, x0, y0, win_w, win_h = record
+        with Image.open(os.path.join(dataset.root_dir, image_path)) as photo:
+            image = np.array(photo.convert("RGB"))
+        image = np.ascontiguousarray(image[y0 : y0 + win_h, x0 : x0 + win_w])
+
+        raw = dataset.annotations_for_path(image_path)
+        boxes, labels = clip_boxes_to_window(
+            raw["boxes"],
+            raw["labels"],
+            x0,
+            y0,
+            win_w,
+            win_h,
+            dataset.min_box_fraction,
+        )
+        targets = utilities.format_geometry(
+            {
+                "boxes": torch.from_numpy(boxes),
+                "labels": torch.from_numpy(np.asarray(labels, dtype=np.int64)),
+            },
+            scores=False,
+        )
+        basename = f"{Path(image_path).stem}_{x0}_{y0}_{global_step}"
+        return image, targets, basename
 
     def _log_to_all(self, image: str, trainer, tag, metadata: dict | None = None):
         """Log to all connected loggers.

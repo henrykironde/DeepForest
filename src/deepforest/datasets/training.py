@@ -18,7 +18,7 @@ from torchvision.datasets import ImageFolder
 
 from deepforest import utilities
 from deepforest.augmentations import get_transform
-from deepforest.preprocess import clip_boxes_to_window, window_starts
+from deepforest.preprocess import clip_boxes_to_window, windows_for_image
 
 
 class TrainingDataset(Dataset):
@@ -37,6 +37,7 @@ class TrainingDataset(Dataset):
         patch_size=None,
         patch_overlap=0.0,
         min_box_fraction=0.5,
+        window_cache=None,
     ):
         """
         Args:
@@ -53,6 +54,9 @@ class TrainingDataset(Dataset):
             patch_overlap (float): Fraction of overlap between those windows.
             min_box_fraction (float): Drop a box when the window keeps this fraction
                 of its area or less.
+            window_cache (str | None): CSV of windows already computed on CPU.
+                When set, training reads that table and does not open every photo
+                before the first step.
         """
         self.annotations = utilities.read_file(csv_file, root_dir=root_dir)
         self.root_dir = root_dir
@@ -77,19 +81,22 @@ class TrainingDataset(Dataset):
         self.preload_images = preload_images
 
         self._validate_labels()
-        if validate_coordinates:
-            self._validate_coordinates()
-
         self.patch_size = patch_size
         self.patch_overlap = patch_overlap
         self.min_box_fraction = min_box_fraction
         self.windows = None
-        if patch_size is not None:
-            self.windows = self._build_windows()
-            print(
-                f"Tiled {len(self.image_names)} images into {len(self.windows)} "
-                f"windows of {patch_size}px (overlap {patch_overlap})"
-            )
+        if window_cache:
+            self.windows = self._load_window_cache(window_cache)
+            print(f"Loaded {len(self.windows)} windows from {window_cache}")
+        else:
+            if validate_coordinates:
+                self._validate_coordinates()
+            if patch_size is not None:
+                self.windows = self._build_windows()
+                print(
+                    f"Tiled {len(self.image_names)} images into {len(self.windows)} "
+                    f"windows of {patch_size}px (overlap {patch_overlap})"
+                )
 
         # Pin data to memory if desired
         if self.preload_images:
@@ -171,42 +178,75 @@ class BoxDataset(TrainingDataset):
             with Image.open(img_path) as img:
                 width, height = img.size
             targets = self.annotations_for_path(image_name)
-            boxes = targets["boxes"]
-            labels = targets["labels"]
-            if len(boxes) == 0:
-                areas = np.zeros(0)
-            else:
-                areas = (boxes[:, 2] - boxes[:, 0]) * (boxes[:, 3] - boxes[:, 1])
-            if not np.any(areas > 0):
-                # Empty frame: one sample, not a grid of blank windows.
-                windows.append((image_idx, 0, 0, width, height, str(image_name)))
-                continue
-            if width <= self.patch_size and height <= self.patch_size:
-                windows.append((image_idx, 0, 0, width, height, str(image_name)))
-                continue
-            for y0 in window_starts(height, self.patch_size, self.patch_overlap):
-                win_h = min(self.patch_size, height - y0)
-                for x0 in window_starts(width, self.patch_size, self.patch_overlap):
-                    win_w = min(self.patch_size, width - x0)
-                    clipped, _kept = clip_boxes_to_window(
-                        boxes,
-                        labels,
-                        x0,
-                        y0,
-                        win_w,
-                        win_h,
-                        self.min_box_fraction,
-                    )
-                    if len(clipped) == 0:
-                        continue
-                    windows.append(
-                        (image_idx, x0, y0, win_w, win_h, f"{image_name}@{x0}_{y0}")
-                    )
+            for x0, y0, win_w, win_h, name in windows_for_image(
+                width,
+                height,
+                targets["boxes"],
+                targets["labels"],
+                self.patch_size,
+                self.patch_overlap,
+                self.min_box_fraction,
+                image_name,
+            ):
+                windows.append((image_idx, x0, y0, win_w, win_h, name))
         if not windows:
             raise ValueError(
                 "Tiling produced no windows. Check patch_size against the photos."
             )
         return windows
+
+    def _load_window_cache(self, path):
+        """Read a precomputed window table.
+
+        Image bytes are still read later.
+        """
+        import pandas as pd
+
+        if not os.path.isfile(path):
+            raise FileNotFoundError(
+                f"Window cache {path} is missing. Build it on CPU before the GPU job."
+            )
+        table = pd.read_csv(path)
+        known = set(table.image_path)
+        skipped = sum(name not in known for name in self.image_names)
+        if skipped:
+            print(f"{skipped} images have no window in {path} and will not be sampled")
+        index = {name: i for i, name in enumerate(self.image_names)}
+        windows = []
+        for row in table.itertuples(index=False):
+            image_idx = index.get(row.image_path)
+            if image_idx is None:
+                continue
+            windows.append(
+                (
+                    image_idx,
+                    int(row.x0),
+                    int(row.y0),
+                    int(row.w),
+                    int(row.h),
+                    row.window_name,
+                )
+            )
+        if not windows:
+            raise ValueError(f"Window cache {path} has no windows.")
+        return windows
+
+    def window_record(self, window_name: str):
+        """Photo path and crop for one sample name.
+
+        Returns (image_path, x0, y0, w, h). A dataset that is not tiled
+        returns None, and the sample name is the photo path itself.
+        """
+        if self.windows is None:
+            return None
+        lookup = getattr(self, "_window_by_name", None)
+        if lookup is None:
+            lookup = {
+                name: (self.image_names[image_idx], x0, y0, win_w, win_h)
+                for image_idx, x0, y0, win_w, win_h, name in self.windows
+            }
+            self._window_by_name = lookup
+        return lookup.get(window_name)
 
     def _validate_coordinates(self) -> None:
         """Validate that all bounding box coordinates occur within the image.

@@ -375,6 +375,7 @@ class deepforest(pl.LightningModule):
         batch_size=1,
         patch_size=None,
         patch_overlap=0.0,
+        window_cache=None,
     ):
         """Create a dataset for inference or training.
 
@@ -405,6 +406,7 @@ class deepforest(pl.LightningModule):
                 validate_coordinates=validate_coordinates,
                 patch_size=patch_size,
                 patch_overlap=patch_overlap,
+                window_cache=window_cache,
             )
         elif patch_size is not None:
             raise ValueError("tile_images is only supported for box models")
@@ -469,6 +471,9 @@ class deepforest(pl.LightningModule):
             batch_size=self.config.batch_size,
             patch_size=int(self.config.patch_size) if tile_images else None,
             patch_overlap=float(self.config.patch_overlap) if tile_images else 0.0,
+            window_cache=getattr(self.config.train, "window_cache", None)
+            if tile_images
+            else None,
         )
 
         return loader
@@ -498,6 +503,9 @@ class deepforest(pl.LightningModule):
                 batch_size=self.config.batch_size,
                 patch_size=int(self.config.patch_size) if tile_images else None,
                 patch_overlap=float(self.config.patch_overlap) if tile_images else 0.0,
+                window_cache=getattr(self.config.validation, "window_cache", None)
+                if tile_images
+                else None,
             )
 
         return loader
@@ -842,10 +850,39 @@ class deepforest(pl.LightningModule):
 
         return formatted_results
 
+    def freeze_backbone(self) -> None:
+        """Keep the backbone fixed and train the detection head."""
+        for parameter in self.model.backbone.parameters():
+            parameter.requires_grad = False
+        self.model.backbone.eval()
+
+    def unfreeze_last_stage(self) -> None:
+        """Train the last ResNet stage, the feature pyramid, and the head.
+
+        Earlier ResNet stages stay frozen and in eval mode so their
+        batch-norm statistics do not move.
+        """
+        self.freeze_backbone()
+        last_stage = self.model.backbone.body.layer4
+        for parameter in last_stage.parameters():
+            parameter.requires_grad = True
+        last_stage.train()
+        pyramid = self.model.backbone.fpn
+        for parameter in pyramid.parameters():
+            parameter.requires_grad = True
+        pyramid.train()
+
+    def _apply_backbone_freeze(self) -> None:
+        if self.config.train.unfreeze_last_stage:
+            self.unfreeze_last_stage()
+        elif self.config.train.freeze_backbone:
+            self.freeze_backbone()
+
     def training_step(self, batch, batch_idx):
         """Train on a loaded dataset."""
         # Confirm model is in train mode
         self.model.train()
+        self._apply_backbone_freeze()
 
         # allow for empty data if data augmentation is generated
         images, targets, image_names = batch
@@ -997,19 +1034,13 @@ class deepforest(pl.LightningModule):
         metrics = {}
 
         if self.model.task == "box":
-            # IoU and mAP
-            if len(self.iou_metric.groundtruth_labels) > 0:
-                metrics.update(self.iou_metric.compute())
-                # Lightning bug: claims this is a warning but it's not. See issue #16218 in Lightning-AI/pytorch-lightning
-                output = self.mAP_metric.compute()
-
-                # Remove classes from output dict
-                output = {
-                    key: value for key, value in output.items() if not key == "classes"
-                }
-                metrics.update(output)
+            metrics.update(distributed.compute_metric_across_ranks(self.iou_metric))
+            # https://github.com/Lightning-AI/torchmetrics/issues/626
+            map_output = distributed.compute_metric_across_ranks(self.mAP_metric)
+            metrics.update(
+                {key: value for key, value in map_output.items() if key != "classes"}
+            )
             metrics.update(self.precision_recall_metric.compute())
-
         elif self.model.task == "point":
             metrics["val_mae"] = self.mae_metric.compute()
             metrics.update(self.precision_recall_metric.compute())
@@ -1139,23 +1170,37 @@ class deepforest(pl.LightningModule):
     def configure_optimizers(self):
         opt_cfg = self.config.train.optimizer
         lr = self.config.train.lr
+        self._apply_backbone_freeze()
+        if self.config.train.unfreeze_last_stage:
+            stage = [p for p in self.model.backbone.parameters() if p.requires_grad]
+            head = [p for p in self.model.head.parameters() if p.requires_grad]
+            parameters = [
+                {"params": stage, "lr": lr * 0.2},
+                {"params": head, "lr": lr},
+            ]
+            print(
+                f"Last stage lr {lr * 0.2:.8f} ({len(stage)} tensors), "
+                f"head lr {lr:.8f} ({len(head)} tensors)"
+            )
+        else:
+            parameters = [p for p in self.model.parameters() if p.requires_grad]
         if opt_cfg.type == "Adam":
             optimizer = optim.Adam(
-                self.model.parameters(),
+                parameters,
                 lr=lr,
                 betas=tuple(opt_cfg.betas),
                 weight_decay=opt_cfg.weight_decay,
             )
         elif opt_cfg.type == "AdamW":
             optimizer = optim.AdamW(
-                self.model.parameters(),
+                parameters,
                 lr=lr,
                 betas=tuple(opt_cfg.betas),
                 weight_decay=opt_cfg.weight_decay,
             )
         elif opt_cfg.type == "SGD":
             optimizer = optim.SGD(
-                self.model.parameters(),
+                parameters,
                 lr=lr,
                 momentum=opt_cfg.momentum,
                 weight_decay=opt_cfg.weight_decay,

@@ -47,6 +47,7 @@ train:
     csv_file: /blue/ewhite/everglades/cluster_deepforest/datasets/fine_tune_2025/train.csv
     root_dir: /blue/ewhite/everglades/cluster_deepforest/datasets/fine_tune_2025/root
     tile_images: true
+    window_cache: /blue/ewhite/everglades/cluster_deepforest/datasets/fine_tune_2025/windows_train.csv
     #validate_labels: true
 
     lr: 0.001
@@ -68,6 +69,7 @@ validation:
     csv_file: /blue/ewhite/everglades/cluster_deepforest/datasets/fine_tune_2025/val.csv
     root_dir: /blue/ewhite/everglades/cluster_deepforest/datasets/fine_tune_2025/root
     tile_images: true
+    window_cache: /blue/ewhite/everglades/cluster_deepforest/datasets/fine_tune_2025/windows_val.csv
 
     # For retinanet you may prefer val_classification, but the default val_loss
     # should work with all models

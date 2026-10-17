@@ -49,6 +49,10 @@ log_root: ./lightning_logs
 train:
     csv_file:
     root_dir:
+    # Train the detection head and leave the backbone weights fixed.
+    freeze_backbone: false
+    # Freeze the early ResNet stages and train layer4, the pyramid, and the head.
+    unfreeze_last_stage: false
 
     # Optimizer initial learning rate
     lr: 0.001
@@ -99,6 +103,7 @@ train:
     # When true, each photo is cut into patch_size windows (patch_overlap) before the
     # model sees it. Leave false to pass each photo through whole.
     tile_images: false
+    window_cache:
 
 
 validation:
@@ -107,6 +112,7 @@ validation:
     preload_images: False
     validate_coordinates: True
     tile_images: false
+    window_cache:
     size:
 
     # For retinanet you may prefer val_classification, but the default val_loss
