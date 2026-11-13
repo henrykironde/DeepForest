@@ -15,6 +15,19 @@ from deepforest.callbacks import ImagesCallback
 from deepforest.main import deepforest
 
 
+class BestAfterFirstEpoch(ModelCheckpoint):
+    """Choose the best checkpoint from epoch 1 onward.
+
+    Epoch 0 can have the lowest val_loss because the loaded weights are
+    already good. That file is not kept.
+    """
+
+    def _should_skip_saving_checkpoint(self, trainer) -> bool:
+        if trainer.current_epoch == 0 and not trainer.sanity_checking:
+            return True
+        return super()._should_skip_saving_checkpoint(trainer)
+
+
 def train(
     config: DictConfig,
     checkpoint: bool = True,
@@ -131,9 +144,13 @@ def train(
         )
     )
 
-    # Setup checkpoint to store in log directory
+    # Setup checkpoint to store in log directory.
+    # SKIP_EPOCH0_BEST=1 leaves epoch 0 out of the best-file comparison.
     if checkpoint:
-        checkpoint_callback = ModelCheckpoint(
+        checkpoint_cls = (
+            BestAfterFirstEpoch if os.environ.get("SKIP_EPOCH0_BEST") else ModelCheckpoint
+        )
+        checkpoint_callback = checkpoint_cls(
             dirpath=Path(csv_logger.log_dir) / "checkpoints",
             filename=f"{config.architecture}-{{epoch:02d}}-{{map_50:.2f}}",
             monitor="val_loss",
@@ -170,8 +187,24 @@ def train(
     if init_weights and not resume:
         checkpoint_data = torch.load(init_weights, map_location="cpu", weights_only=False)
         state = checkpoint_data["state_dict"]
-        m.load_state_dict(state)
-        print(f"Loaded weights from {init_weights}")
+        if os.environ.get("INIT_WEIGHTS_SKIP_MISMATCH"):
+            current = m.state_dict()
+            matched = {
+                key: value
+                for key, value in state.items()
+                if key in current and tuple(current[key].shape) == tuple(value.shape)
+            }
+            skipped = sorted(set(state) - set(matched))
+            m.load_state_dict(matched, strict=False)
+            print(
+                f"Loaded weights from {init_weights}, "
+                f"skipped {len(skipped)} tensors with a different shape"
+            )
+            for key in skipped:
+                print(f"  skipped {key}")
+        else:
+            m.load_state_dict(state)
+            print(f"Loaded weights from {init_weights}")
 
     train_success = False
     try:

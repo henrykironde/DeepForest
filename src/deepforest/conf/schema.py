@@ -140,6 +140,8 @@ class CropModelConfig:
     resize_interpolation: str = "bilinear"
     normalize: Any = None
     expand: int = 0
+    train_augmentations: list[str] | None = None
+    augmentation_params: Any = None
 
 
 @dataclass

@@ -354,6 +354,38 @@ def test_crop_model_resnet18():
     assert out.shape == (2, 3)
 
 
+def test_train_augmentations_stay_off_the_exam_transform():
+    """Scale, color, and rotation run before normalization, and only on train."""
+    cm = CropModel(
+        config_args={
+            "augmentation_params": {
+                "ShrinkStretch": {"size": 50, "p": 1.0},
+                "ColorJitter": {"brightness": 0.2, "contrast": 0.2},
+                "RandomRotation": {"degrees": 15},
+            }
+        }
+    )
+    names = ["HorizontalFlip", "ShrinkStretch", "ColorJitter", "RandomRotation"]
+    plain = cm.get_transform(augmentations=None)
+    trained = cm.get_transform(augmentations=names)
+    plain_types = [type(step) for step in plain.transforms]
+    trained_types = [type(step) for step in trained.transforms]
+
+    assert model.RandomShrinkStretch not in plain_types
+    assert transforms.ColorJitter not in plain_types
+    assert transforms.RandomRotation not in plain_types
+    assert model.RandomShrinkStretch in trained_types
+    assert transforms.ColorJitter in trained_types
+    assert transforms.RandomRotation in trained_types
+    assert trained_types.index(transforms.Normalize) > trained_types.index(
+        transforms.ColorJitter
+    )
+
+    image = transforms.ToPILImage()(torch.zeros(3, 80, 60))
+    output = trained(image)
+    assert output.shape == (3, 224, 224)
+
+
 def test_crop_model_default_architecture_is_resnet50():
     """When no architecture is specified, CropModel defaults to resnet50."""
     cm = CropModel()

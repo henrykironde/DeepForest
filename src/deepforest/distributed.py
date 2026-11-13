@@ -126,13 +126,27 @@ def gather_object(obj: Any) -> list[Any]:
     return gathered
 
 
+def _move_to_device(value: Any, device: torch.device) -> Any:
+    """Move tensors onto one device. all_gather_object keeps each rank's GPU."""
+    if isinstance(value, torch.Tensor):
+        return value.to(device)
+    if isinstance(value, list):
+        return [_move_to_device(item, device) for item in value]
+    if isinstance(value, tuple):
+        return tuple(_move_to_device(item, device) for item in value)
+    if isinstance(value, dict):
+        return {key: _move_to_device(item, device) for key, item in value.items()}
+    return value
+
+
 def compute_metric_across_ranks(metric: Any) -> dict[str, Any]:
     """Compute a detection metric when ranks saw different numbers of crops.
 
     TorchMetrics stores one tensor per crop and gathers those tensors
     one at a time. A rank that skipped an empty crop sends fewer tensors
     than a rank that did not, and the gather does not finish. Gather
-    each whole list once, then compute from the combined crops.
+    each whole list once, move every tensor onto this rank's device, then
+    compute from the combined crops.
     """
     if not is_distributed():
         return metric.compute()
@@ -146,7 +160,10 @@ def compute_metric_across_ranks(metric: Any) -> dict[str, Any]:
             if not isinstance(value, list):
                 continue
             gathered = gather_object(value)
-            flat = [item for part in gathered for item in part]
+            flat = _move_to_device(
+                [item for part in gathered for item in part],
+                metric.device,
+            )
             setattr(metric, name, flat)
             saw_crops = saw_crops or bool(flat)
         if not saw_crops:

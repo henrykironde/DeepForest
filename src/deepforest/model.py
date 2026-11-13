@@ -119,6 +119,33 @@ def simple_resnet_50(num_classes: int = 2) -> torch.nn.Module:
     return create_crop_backbone("resnet50", num_classes=num_classes)
 
 
+class RandomShrinkStretch:
+    """Downsample a crop and stretch it back, with probability ``p``.
+
+    Replay boxes are about 50 pixels and get stretched to 224. Later flights
+    are larger and get shrunk. This step puts that blur into training.
+    """
+
+    def __init__(self, size: int = 50, p: float = 0.5) -> None:
+        self.size = size
+        self.p = p
+
+    def __call__(self, image: torch.Tensor) -> torch.Tensor:
+        if float(torch.rand(())) >= self.p:
+            return image
+        height, width = image.shape[-2:]
+        small = transforms.functional.resize(
+            image,
+            [self.size, self.size],
+            interpolation=transforms.InterpolationMode.BILINEAR,
+        )
+        return transforms.functional.resize(
+            small,
+            [height, width],
+            interpolation=transforms.InterpolationMode.BILINEAR,
+        )
+
+
 class CropModel(LightningModule, PyTorchModelHubMixin):
     """A PyTorch Lightning module for classifying image crops from object
     detection models.
@@ -234,10 +261,16 @@ class CropModel(LightningModule, PyTorchModelHubMixin):
         Returns:
             None
         """
+        train_augmentations = self.config["cropmodel"].get("train_augmentations", None)
+        if train_augmentations is None:
+            train_augmentations = ["HorizontalFlip"]
+        else:
+            train_augmentations = [str(name) for name in train_augmentations]
+        print(f"Train augmentations: {train_augmentations}")
         self.train_ds, self.val_ds = create_aligned_image_folders(
             train_dir,
             val_dir,
-            transform_train=self.get_transform(augmentations=["HorizontalFlip"]),
+            transform_train=self.get_transform(augmentations=train_augmentations),
             transform_val=self.get_transform(augmentations=None),
         )
         self.label_dict = self.train_ds.class_to_idx
@@ -254,19 +287,38 @@ class CropModel(LightningModule, PyTorchModelHubMixin):
         """Returns the data transformation pipeline for the model.
 
         Args:
-            augmentations (str, list, dict, optional): Augmentation configuration.
-                If None, no augmentations are applied. If "HorizontalFlip" or
-                ["HorizontalFlip"], applies random horizontal flip.
+            augmentations (str, list, optional): Augmentation names. None leaves
+                resize and normalization only. HorizontalFlip is a left-right flip.
+                ShrinkStretch, ColorJitter, and RandomRotation run before
+                normalization. Their sizes come from ``augmentation_params``.
 
         Returns:
             torchvision.transforms.Compose: The composed data transformation pipeline.
         """
-        data_transforms = []
-        data_transforms.append(transforms.ToTensor())
+        steps = [transforms.ToTensor()]
+        extra = self._augmentation_steps(augmentations)
+        changes_pixels = any(
+            isinstance(
+                step,
+                (RandomShrinkStretch, transforms.ColorJitter, transforms.RandomRotation),
+            )
+            for step in extra
+        )
         norm = self.normalize()
-        if norm is not None:
-            data_transforms.append(norm)
+        resize = self._resize_transform()
+        if changes_pixels:
+            steps.append(resize)
+            steps.extend(extra)
+            if norm is not None:
+                steps.append(norm)
+        else:
+            if norm is not None:
+                steps.append(norm)
+            steps.append(resize)
+            steps.extend(extra)
+        return transforms.Compose(steps)
 
+    def _resize_transform(self) -> transforms.Resize:
         resize_dims = self.config["cropmodel"].get("resize", [224, 224])
         interp_name = self.config["cropmodel"].get("resize_interpolation", "bilinear")
         interp = (
@@ -274,16 +326,37 @@ class CropModel(LightningModule, PyTorchModelHubMixin):
             if interp_name == "nearest"
             else transforms.InterpolationMode.BILINEAR
         )
-        data_transforms.append(transforms.Resize(resize_dims, interpolation=interp))
+        return transforms.Resize(resize_dims, interpolation=interp)
 
-        # Apply augmentations if specified
-        if augmentations is not None:
-            if isinstance(augmentations, str) and augmentations == "HorizontalFlip":
-                data_transforms.append(transforms.RandomHorizontalFlip(0.5))
-            elif isinstance(augmentations, list) and "HorizontalFlip" in augmentations:
-                data_transforms.append(transforms.RandomHorizontalFlip(0.5))
-
-        return transforms.Compose(data_transforms)
+    def _augmentation_steps(self, augmentations) -> list:
+        if augmentations is None:
+            return []
+        names = [augmentations] if isinstance(augmentations, str) else list(augmentations)
+        params = self.config["cropmodel"].get("augmentation_params") or {}
+        steps = []
+        for name in names:
+            cfg = params.get(name) or {}
+            if name == "HorizontalFlip":
+                steps.append(transforms.RandomHorizontalFlip(0.5))
+            elif name == "ShrinkStretch":
+                steps.append(
+                    RandomShrinkStretch(
+                        size=int(cfg.get("size", 50)),
+                        p=float(cfg.get("p", 0.5)),
+                    )
+                )
+            elif name == "ColorJitter":
+                steps.append(
+                    transforms.ColorJitter(
+                        brightness=float(cfg.get("brightness", 0.2)),
+                        contrast=float(cfg.get("contrast", 0.2)),
+                    )
+                )
+            elif name == "RandomRotation":
+                steps.append(
+                    transforms.RandomRotation(degrees=float(cfg.get("degrees", 15)))
+                )
+        return steps
 
     def expand_bbox_to_square(self, bbox, image_width, image_height):
         """Expand a bounding box to a square by extending the shorter side.
@@ -430,8 +503,18 @@ class CropModel(LightningModule, PyTorchModelHubMixin):
                 counts[t] = counts.get(t, 0) + 1
 
             weights = [1.0 / counts[t] for t in self.train_ds.targets]
+            num_samples = len(weights)
+            generator = None
+            if torch.distributed.is_available() and torch.distributed.is_initialized():
+                world = torch.distributed.get_world_size()
+                num_samples = max(1, num_samples // world)
+                generator = torch.Generator()
+                generator.manual_seed(42 + torch.distributed.get_rank())
             sampler = torch.utils.data.WeightedRandomSampler(
-                weights=weights, num_samples=len(weights), replacement=True
+                weights=weights,
+                num_samples=num_samples,
+                replacement=True,
+                generator=generator,
             )
             shuffle = False
         else:

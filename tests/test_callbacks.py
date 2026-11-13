@@ -239,6 +239,18 @@ def test_log_predictions_opens_the_photo_not_the_window_name(tmp_path):
         assert picture.size == (win_w, win_h)
 
 
+def test_log_predictions_skips_when_no_boxes(tmp_path):
+    """An epoch with no boxes has no prediction table to draw."""
+    trainer = Mock()
+    pl_module = Mock()
+    pl_module.predictions = []
+    im_callback = callbacks.ImagesCallback(
+        save_dir=tmp_path, every_n_epochs=1, prediction_samples=1
+    )
+    im_callback._log_last_predictions(trainer, pl_module)
+    assert not (tmp_path / "predictions").exists()
+
+
 def test_create_checkpoint(m, tmp_path):
     """Test checkpoint creation"""
     checkpoint_callback = ModelCheckpoint(

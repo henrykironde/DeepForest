@@ -7,10 +7,11 @@ from importlib.resources import files
 
 import pytest
 from omegaconf import OmegaConf
+from pytorch_lightning.trainer.states import TrainerFn
 
 from deepforest import get_data
+from deepforest.scripts.train import BestAfterFirstEpoch, train
 from deepforest.utilities import load_config
-from deepforest.scripts.train import train
 
 SCRIPT = files("deepforest.scripts").joinpath("cli.py")
 
@@ -135,3 +136,19 @@ def test_cli_train_experiment_name(tmp_path):
 
     assert result.returncode == 0
     assert (tmp_path / "cli-test-name").is_dir()
+
+
+def test_epoch_zero_is_not_the_best_checkpoint():
+    callback = BestAfterFirstEpoch(monitor="val_loss", mode="min")
+    trainer = type("Trainer", (), {})()
+    trainer.current_epoch = 0
+    trainer.sanity_checking = False
+    trainer.fast_dev_run = False
+    trainer.state = type("State", (), {"fn": TrainerFn.FITTING})()
+    trainer.global_step = 3
+    callback._last_global_step_saved = -1
+
+    assert callback._should_skip_saving_checkpoint(trainer)
+
+    trainer.current_epoch = 1
+    assert not callback._should_skip_saving_checkpoint(trainer)

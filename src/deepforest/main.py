@@ -11,7 +11,7 @@ import torch
 import torchmetrics
 from omegaconf import DictConfig, OmegaConf
 from PIL import Image
-from pytorch_lightning.callbacks import LearningRateMonitor
+from pytorch_lightning.callbacks import LearningRateMonitor, ModelCheckpoint
 from pytorch_lightning.loggers import CSVLogger
 from torch import optim
 from torchmetrics.detection import IntersectionOverUnion, MeanAveragePrecision
@@ -820,6 +820,7 @@ class deepforest(pl.LightningModule):
 
         if crop_model is not None:
             cropmodel_results = []
+            paths = list(set(paths))
             for path in paths:
                 image_result = mosaic_results[
                     mosaic_results.image_path == os.path.basename(path)

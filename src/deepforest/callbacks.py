@@ -139,10 +139,11 @@ class ImagesCallback(Callback):
         if self.prediction_samples == 0:
             return
 
-        if len(pl_module.predictions) > 0:
-            df = pd.concat(pl_module.predictions)
-        else:
-            df = pd.DataFrame()
+        if len(pl_module.predictions) == 0:
+            return
+        df = pd.concat(pl_module.predictions)
+        if df.empty or "image_path" not in df.columns:
+            return
 
         out_dir = os.path.join(self.savedir, "predictions")
         os.makedirs(out_dir, exist_ok=True)
